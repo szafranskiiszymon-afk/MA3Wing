@@ -131,7 +131,9 @@ function applyExec(n,v){
   const q=String(v).split('|');const name=(q[0]||'').trim();const col=/^#[0-9a-f]{6}$/i.test(q[1]||'')?q[1]:'';
   e.keys.forEach(k=>{
     const isX=k.mark.indexOf('X')===0;
-    if(!isX)k.b.innerHTML=(name?'<span class="nm">'+esc(name)+'</span>':k.num+'<br>')+'<span class="sub">'+(name?k.num:k.mark)+'</span>';
+    if(isX){const xl=k.mark.split('|');   // Xkeys: name from the show, or the console label
+      k.b.innerHTML=name?'<span class="nm">'+esc(name)+'</span><span class="sub">'+xl[0]+'</span>':xl[0]+'<br><span class="sub">'+(xl[1]||'')+'</span>';}
+    else k.b.innerHTML=(name?'<span class="nm">'+esc(name)+'</span>':k.num+'<br>')+'<span class="sub">'+(name?k.num:k.mark)+'</span>';
     if(col){k.b.style.background=shade(col,0.42);k.b.style.boxShadow='inset 0 3px 0 '+col+', 0 2px 0 #000';k.b.style.color=lum(col)>0.85?'#fff':'#fff';}
     else{k.b.style.background='';k.b.style.boxShadow='';k.b.style.color='';}
     if(!isX)k.b.style.fontSize=name&&name.length>6?'10px':'';
@@ -339,7 +341,7 @@ for(let h=0;h<2;h++){
   [xr1,xr2].forEach((r,ri)=>{
     const g=rowEl(r,GP,(h?'margin-left:10px':''));
     for(let j=0;j<4;j++){const idx=ri*8+h*4+j;const n=idx<8?291+idx:191+idx-8;
-      exReg(n,'key',sized(key(g,'X'+(idx+1),'',()=>keyMsg(n,1),()=>keyMsg(n,0),xsub[idx]||String(n)),U,U,10),'X');}
+      exReg(n,'key',sized(key(g,'X'+(idx+1),'',()=>keyMsg(n,1),()=>keyMsg(n,0),xsub[idx]||String(n)),U,U,10),'X'+(idx+1)+'|'+(xsub[idx]||String(n)));}
   });
 }
 el('div','height:6px',xb);
