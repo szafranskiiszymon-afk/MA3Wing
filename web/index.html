@@ -11,8 +11,9 @@
 <style>
 html,body{margin:0;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:-apple-system,"SF Pro Text",Inter,system-ui,sans-serif}
 #stage{position:absolute;left:0;top:0;width:1180px;height:820px;transform-origin:0 0;background:#0e0e10;color:#fff;box-sizing:border-box;padding:8px;display:flex;flex-direction:column;gap:8px}
-.k{border:1px solid #000;border-radius:5px;font:600 12px -apple-system,Inter,system-ui,sans-serif;box-shadow:0 2px 0 #000;padding:0 2px;white-space:nowrap;overflow:hidden;line-height:1.15;background:#2b2b2f;color:#e5e5ea;-webkit-tap-highlight-color:transparent;touch-action:none}
+.k{min-width:0;border:1px solid #000;border-radius:5px;font:600 12px -apple-system,Inter,system-ui,sans-serif;box-shadow:0 2px 0 #000;padding:0 2px;white-space:nowrap;overflow:hidden;line-height:1.15;background:#2b2b2f;color:#e5e5ea;-webkit-tap-highlight-color:transparent;touch-action:none}
 .k.on{outline:2px solid #ffc71a;transform:scale(.96);box-shadow:none;filter:brightness(1.35)}
+.nm{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sub{font-size:11px;color:inherit;opacity:.65}
 .row{display:flex}.col{display:flex;flex-direction:column}
 .grid{display:grid}
@@ -130,7 +131,7 @@ function applyExec(n,v){
   const q=String(v).split('|');const name=(q[0]||'').trim();const col=/^#[0-9a-f]{6}$/i.test(q[1]||'')?q[1]:'';
   e.keys.forEach(k=>{
     const isX=k.mark.indexOf('X')===0;
-    if(!isX)k.b.innerHTML=(name?esc(name):k.num)+'<br><span class="sub">'+(name?k.num:k.mark)+'</span>';
+    if(!isX)k.b.innerHTML=(name?'<span class="nm">'+esc(name)+'</span>':k.num+'<br>')+'<span class="sub">'+(name?k.num:k.mark)+'</span>';
     if(col){k.b.style.background=shade(col,0.42);k.b.style.boxShadow='inset 0 3px 0 '+col+', 0 2px 0 #000';k.b.style.color=lum(col)>0.85?'#fff':'#fff';}
     else{k.b.style.background='';k.b.style.boxShadow='';k.b.style.color='';}
     if(!isX)k.b.style.fontSize=name&&name.length>6?'10px':'';
@@ -191,11 +192,11 @@ const body=el('div','flex:1;min-height:0;background:#1a1a1d;border-radius:14px;p
 const U=38,GP=4;
 
 // ===== executor section (8/7: knobs + keys 401/301, 6: faders 201, 5: keys 201/101)
-const ex=el('div','width:430px;flex:none;display:flex;gap:16px',body);
+const ex=el('div','width:430px;flex:none;display:flex;gap:16px;overflow:hidden',body);
 [[1,2,3,4,5],[6,7,8,9,10]].forEach(block=>{
-  const b=el('div','flex:1;display:flex;gap:4px',ex);
+  const b=el('div','flex:1 1 0;min-width:0;display:flex;gap:4px',ex);
   block.forEach(i=>{
-    const c=el('div','flex:1;min-width:0;display:flex;flex-direction:column;gap:5px',b);
+    const c=el('div','flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:5px',b);
     const fx=200+i;
     const k4=exReg(400+i,'knob',knob(c,400+i));exReg(400+i,'key',key(c,String(400+i),'height:40px',()=>keyMsg(400+i,1),()=>keyMsg(400+i,0),'≡'),'≡');
     el('div','height:8px',c);
