@@ -223,7 +223,7 @@ const ex=el('div','width:430px;flex:none;display:flex;gap:16px;overflow:hidden',
 const ms=el('div','width:104px;flex:none;display:flex;flex-direction:column;gap:6px',body);
 const mg=el('div','display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px',ms);
 [['Prev','Previous'],['Next','Next'],['Set','Set'],['Up','Up'],['SelFix','SelFix'],['Down','Down']].forEach(a=>{
-  if(a[0]==='Set')key(mg,'Set','height:36px',()=>pad('kw','Set'));      // Set goes into the command line like on the console
+  if(a[0]==='Set')key(mg,'Set','height:36px',()=>cmdSend('Set Selection Property "Active"'));   // console Set key: toggles MAtricks (back to whole selection after Next/Prev)
   else key(mg,a[0],'height:36px',()=>cmdSend(a[1]));});
 el('div','height:18px',ms);
 const mf=el('div','flex:1;display:flex;gap:8px;min-height:0',ms);
