@@ -47,7 +47,18 @@ function tx(addr,type,val){
   osc((wsOk?'OSC → ':'BRAK POŁĄCZENIA – ')+addr+' '+(type==='s'?'"'+val+'"':val));
 }
 function cmdSend(c){tx('/cmd','s',c);}
-function keyMsg(n,d){tx('/Page'+S.page+'/Key'+n,'i',d?1:0);}
+// Executor key like on the console: if a command is pending in the command line
+// (e.g. "Store", "Update", "Copy", "Delete", "Edit", "Label"...), the key completes it with
+// that executor instead of firing the executor: "Store" + key 201 -> Store Exec 1.201
+const swallowed=new Set();
+function keyMsg(n,d){
+  if(d&&S.cmd.trim()){
+    swallowed.add(n);
+    cmdSend(S.cmd.trim()+' Exec '+S.page+'.'+n);S.cmd='';showCmd();return;
+  }
+  if(!d&&swallowed.has(n)){swallowed.delete(n);return;}
+  tx('/Page'+S.page+'/Key'+n,'i',d?1:0);
+}
 function connect(){
   if(!/^https?:/.test(location.protocol)){hostEl.textContent='otwórz przez adres laptopa';return;}
   try{ws=new WebSocket('ws://'+location.host+'/ws');}catch(e){setTimeout(connect,2000);return;}
@@ -324,7 +335,7 @@ sized(key(cX,'Xkeys','',()=>osc('Xkeys (przełącza funkcje Xkeys)')),U+4,U,11);
 sized(key(cX,'List','',()=>cmdSend('List')),U+4,U,11);
 const cM=colEl(upB,6,'margin-left:4px');
 const lw=el('div','height:13px',cM);led(lw);
-sized(key(cM,'Menu','',()=>cmdSend('Menu')),U+4,U,11);
+sized(key(cM,'Menu','',()=>cmdSend('Menu "MainMenu"')),U+4,U,11);
 
 // lower block
 const loB=rowEl(cs,12,'align-items:flex-start;margin-top:6px');
