@@ -1,6 +1,6 @@
 -- MA3 Wing sync: zapisuje pozycje faderow (2xx) i galek (3xx, 4xx) z aktualnej strony
 -- do pliku tymczasowego, ktory czyta most MA3 Wing na tym samym laptopie.
--- Uruchom raz (klik na plugin w puli). Ponowne klikniecie = zapisz wszystko jeszcze raz.
+-- Uruchom raz (klik na plugin w puli). Ponowne klikniecie = restart i zapis wszystkiego od nowa.
 
 local COLUMNS = 15        -- ile kolumn executorow sprawdzac (x01..x15)
 local PERIOD  = 0.1       -- co ile sekund sprawdzac zmiany
@@ -51,24 +51,21 @@ local function run()
     if type(GetExecutor) ~= 'function' then say('BLAD: brak funkcji GetExecutor'); return end
     if type(coroutine) ~= 'table' or type(coroutine.yield) ~= 'function' then say('BLAD: brak coroutine.yield'); return end
 
-    if MA3WingSyncRunning then
-        MA3WingForceResend = true
-        say('zapisuje wszystko ponownie')
-        return
-    end
+    -- zatrzymaj wszystkie starsze wersje tej wtyczki (takze te z SendOSC)
+    MA3WingSyncRunning = false
+    local token = {}
+    MA3WingToken = token          -- kazde klikniecie przejmuje sterowanie; starsza petla sama sie konczy
 
     local file = stateFile()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    MA3WingSyncRunning = true
-    MA3WingForceResend = true
-    say('start, plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v3), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage = {}, nil
-    while MA3WingSyncRunning do
+    while MA3WingToken == token do
         local page = pageNumber()
-        local changed = (page ~= lastPage) or MA3WingForceResend
+        local changed = (page ~= lastPage)
         local vals = {}
         for _, base in ipairs(ROWS) do
             for i = 1, COLUMNS do
@@ -81,7 +78,7 @@ local function run()
         if changed then
             local ok, err = writeState(file, page, vals)
             if ok then
-                last, lastPage, MA3WingForceResend = vals, page, false
+                last, lastPage = vals, page
             else
                 say('nie moge zapisac pliku: ' .. tostring(err))
                 coroutine.yield(2)
@@ -94,7 +91,6 @@ end
 return function()
     local ok, err = pcall(run)
     if not ok then
-        MA3WingSyncRunning = false
         say('BLAD: ' .. tostring(err))
     end
 end
