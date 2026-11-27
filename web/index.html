@@ -52,12 +52,8 @@ function cmdSend(c){tx('/cmd','s',c);}
 // that executor instead of firing the executor: "Store" + key 201 -> Store Exec 1.201
 const swallowed=new Set();
 function keyMsg(n,d){
-  if(d&&S.cmd.trim()){
-    swallowed.add(n);
-    cmdSend(S.cmd.trim()+' Exec '+S.page+'.'+n);S.cmd='';showCmd();return;
-  }
-  if(!d&&swallowed.has(n)){swallowed.delete(n);return;}
   tx('/Page'+S.page+'/Key'+n,'i',d?1:0);
+  if(d&&S.cmd){S.cmd='';showCmd();}   // MA consumed the pending command
 }
 function connect(){
   if(!/^https?:/.test(location.protocol)){hostEl.textContent='otwórz przez adres laptopa';return;}
@@ -138,16 +134,24 @@ function applyExec(n,v){
 }
 
 // command line keypad logic
+// Command keys are TYPED into the real MA command line on the laptop (the bridge
+// acts as a keyboard), exactly like pressing the key on a console: "Store" waits in MA's
+// command line and you can finish it with the mouse in onPC or with an executor key.
+// S.cmd only mirrors what we typed (MA may consume it when you click in onPC).
+function typeText(t){if(wsOk){try{ws.send('!keys\tt\t'+t);}catch(e){}}}
+function typeKey(k){if(wsOk){try{ws.send('!keys\tk\t'+k);}catch(e){}}}
 function pad(kind,v){
   const c=S.cmd;
-  if(kind==='d'){S.cmd=(c&&/[0-9.]$/.test(c))?c+v:(c?c+' '+v:v);}
-  else if(kind==='dot')S.cmd=c+'.';
-  else if(kind==='kw')S.cmd=c?c+' '+v:v;
+  if(kind==='d'){const t=(c&&!/[0-9. ]$/.test(c))?' '+v:v;typeText(t);S.cmd=c+t;}
+  else if(kind==='dot'){typeText('.');S.cmd=c+'.';}
+  else if(kind==='kw'){const t=(c&&!/ $/.test(c)?' ':'')+v+' ';typeText(t);S.cmd=c+t;}
   else if(kind==='dir')cmdSend(v);
-  else if(kind==='please'){cmdSend(c||'Please');S.cmd='';}
-  else if(kind==='clear'){if(c)S.cmd='';else cmdSend('Clear');}
-  else if(kind==='oops'){if(c){const p=c.split(' ');p.pop();S.cmd=p.join(' ');}else cmdSend('Oops');}
-  else if(kind==='bs')S.cmd=c.slice(0,-1).trim();
+  else if(kind==='please'){typeKey('{ENTER}');S.cmd='';}
+  else if(kind==='clear'){if(c){typeKey('{ESC}');S.cmd='';}else cmdSend('Clear');}
+  else if(kind==='oops'){if(c){const m=/(\S+\s*)$/.exec(c);const n=m?m[1].length:1;typeKey('{BS '+n+'}');S.cmd=c.slice(0,c.length-n);}else cmdSend('Oops');}
+  else if(kind==='bs'){typeKey('{BS}');S.cmd=c.slice(0,-1);}
+  else if(kind==='esc'){typeKey('{ESC}');S.cmd='';}
+  osc(wsOk?'MA linia komend ← '+(S.cmd||'(pusta)'):'BRAK POŁĄCZENIA');
   showCmd();
 }
 const R='#a32a26',B='#24457a',A='#e0961f',AT='#2b1a00',N='#3a3a3f',G='#1f7a3c',W='#fff';
@@ -354,7 +358,7 @@ d('7');d('8');d('9');kw(np,'+');d('4');d('5');d('6');kw(np,'Thru');d('1');d('2')
 key(np,'MA','height:auto;background:#111;color:#fff',()=>osc('MA (klawisz modyfikatora)'));pk(np,'/ *','kw','/');el('div','',np);pk(np,'Please','please','',G,W);
 const cO=el('div','display:grid;grid-template-rows:repeat(5,'+U+'px);gap:'+GP+'px',loB);
 const oo=pk(cO,'Oops','oops','',A,AT);oo.style.gridRow='1';
-const es=dir(cO,'Esc','Escape');es.style.gridRow='4';
+const es=pk(cO,'Esc','esc');es.style.gridRow='4';
 const cr=pk(cO,'Clear','clear','',A,AT);cr.style.gridRow='5';
 [oo,es,cr].forEach(b=>sized(b,U+4,U));
 const cFull=el('div','display:grid;grid-template-rows:repeat(5,'+U+'px);gap:'+GP+'px',loB);

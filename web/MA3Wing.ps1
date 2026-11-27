@@ -199,9 +199,36 @@ function Send-ToClients([string]$text) {
     }
 }
 
+# --- klawiatura: wpisywanie w linie komend onPC (jak klawisze konsoli) ---
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName Microsoft.VisualBasic
+$script:maPid = 0
+function Send-MAKeys([string]$mode, [string]$text) {
+    if ($mode -eq 't') {
+        # tekst: znaki specjalne SendKeys trzeba ujac w nawiasy klamrowe
+        $sb = New-Object System.Text.StringBuilder
+        foreach ($ch in $text.ToCharArray()) {
+            if ('+^%~(){}[]'.IndexOf($ch) -ge 0) { [void]$sb.Append('{').Append($ch).Append('}') } else { [void]$sb.Append($ch) }
+        }
+        $keys = $sb.ToString()
+    } else { $keys = $text }
+    try {
+        $p = $null
+        if ($script:maPid) { $p = Get-Process -Id $script:maPid -ErrorAction SilentlyContinue }
+        if (-not $p -or $p.MainWindowHandle -eq 0) {
+            $p = Get-Process -ErrorAction SilentlyContinue | Where-Object { ($_.ProcessName -like '*gma3*') -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+        }
+        if ($p) { $script:maPid = $p.Id; [Microsoft.VisualBasic.Interaction]::AppActivate($p.Id); Start-Sleep -Milliseconds 40 }
+        else { Write-Host "Nie widze okna onPC - nie moge wpisac: $text" -ForegroundColor Yellow; return }
+        [System.Windows.Forms.SendKeys]::SendWait($keys)
+        Write-Host ("-> klawiatura onPC: {0}" -f $text)
+    } catch { Write-Host "Blad wpisywania do onPC: $($_.Exception.Message)" -ForegroundColor Red }
+}
+
 function Invoke-Line([string]$line) {
     $parts = $line -split "`t", 3
     if ($parts.Count -lt 3) { return }
+    if ($parts[0] -eq '!keys') { Send-MAKeys $parts[1] $parts[2]; return }
     $addr = $parts[0]
     if ($Prefix) { $addr = '/' + $Prefix + $addr }
     try {
