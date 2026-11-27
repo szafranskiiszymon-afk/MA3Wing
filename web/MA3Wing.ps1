@@ -6,6 +6,8 @@ $HttpPorts    = @(8080, 8090, 8888, 9080, 18080)   # porty strony dla iPada - wy
 $ConsoleIP    = '127.0.0.1'   # gdzie dziala onPC (ten sam laptop = 127.0.0.1)
 $OscPort      = 8000          # port OSC ustawiony w onPC (Receive)
 $Prefix       = 'gma3'        # prefix ustawiony w onPC
+$ShortcutsOn  = $true         # czy w onPC sa wlaczone skroty klawiszowe (ShCuts / F10). Jesli tak, skrypt
+                              # na czas wpisywania je wylacza (F10) i potem wlacza z powrotem.
 $FeedbackPorts = @(9000, 9100, 19000)   # porty feedbacku z onPC (Send) - pierwszy wolny; @() = wylacz
 # ======================
 
@@ -220,6 +222,7 @@ function Send-MAKeys([string]$mode, [string]$text) {
         }
         if ($p) { $script:maPid = $p.Id; [Microsoft.VisualBasic.Interaction]::AppActivate($p.Id); Start-Sleep -Milliseconds 40 }
         else { Write-Host "Nie widze okna onPC - nie moge wpisac: $text" -ForegroundColor Yellow; return }
+        if ($ShortcutsOn) { $keys = '{F10}' + $keys + '{F10}' }
         [System.Windows.Forms.SendKeys]::SendWait($keys)
         Write-Host ("-> klawiatura onPC: {0}" -f $text)
     } catch { Write-Host "Blad wpisywania do onPC: $($_.Exception.Message)" -ForegroundColor Red }
