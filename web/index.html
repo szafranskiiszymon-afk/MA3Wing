@@ -75,6 +75,7 @@ function feedback(line){
   const p=line.split('\t');if(p[0]!=='fb')return;
   if(/^ATTR/.test(p[1]||'')){attrFeedback(p[1],p[2]||'');return;}
   if(/^EXEC\d+$/.test(p[1]||'')){applyExec(+p[1].slice(4),p[2]||'');return;}
+  if(/^(GRP|PRE\d+\.)/.test(p[1]||'')){poolFeedback(p[1],p[2]||'');return;}
   if(p[1]==='CMDLINE'){S.cmd=(p[2]||'').replace(/^\s+/,'');if(S.cmd&&!/ $/.test(S.cmd))S.cmd+=' ';showCmd();return;}
   if(touching>0)return;
   const m=/Page(\d+)\/Fader(\d+)$/.exec(p[1]||'');const v=parseFloat(p[2]);
@@ -184,6 +185,9 @@ const redrawAll=[];
 key(top,'◀','width:40px;height:34px;flex:none',()=>{S.page=Math.max(1,S.page-1);S.f={};S.kn={};pageEl.textContent='Page '+S.page;redrawAll.forEach(f=>f());showCmd();cmdSend('Page '+S.page);});
 pageEl=el('span','font:700 15px ui-monospace,Menlo,monospace;color:#ffc71a;width:72px;text-align:center;flex:none',top,'Page 1');
 key(top,'▶','width:40px;height:34px;flex:none',()=>{S.page++;S.f={};S.kn={};pageEl.textContent='Page '+S.page;redrawAll.forEach(f=>f());showCmd();cmdSend('Page '+S.page);});
+const tabBar=el('div','display:flex;gap:4px;flex:none',top);
+const tabBtns={};
+['Wing','Groups','Presets'].forEach(t=>{tabBtns[t]=key(tabBar,t,'height:34px;width:74px',()=>showTab(t));});
 const cl=el('div','flex:1;min-width:0;height:36px;background:#000;border-radius:6px;display:flex;align-items:center;gap:16px;padding:0 10px;overflow:hidden',top);
 cmdEl=el('div','font:14px ui-monospace,Menlo,monospace;white-space:nowrap;flex:1;min-width:0;overflow:hidden',cl);
 lastEl=el('div','color:#8e8e93;white-space:nowrap;flex:none',cl,'—');lastEl.className='mono';
@@ -386,6 +390,72 @@ let lst=null;
 lwW.addEventListener('pointerdown',e=>{e.preventDefault();try{lwW.setPointerCapture(e.pointerId)}catch(x){}lst={y:e.clientY,p:0};});
 lwW.addEventListener('pointermove',e=>{if(!lst)return;const off=(lst.y-e.clientY)/scale;lwW.style.backgroundPosition='0 '+(-off)+'px';const st=Math.round(off/8);if(st!==lst.p){osc('Level wheel '+(st>lst.p?'+':'-')+' (adres OSC do ustalenia)');lst.p=st;}});
 const lend=()=>{lst=null};lwW.addEventListener('pointerup',lend);lwW.addEventListener('pointercancel',lend);
+
+// ===== Groups / Presets pools (plugin v7: GRPn, GRPLIST, PREt.n, PREt.LIST) =====
+const POOLS={GRP:{items:{},list:null}};
+const PTYPES=[[1,'Dimmer'],[2,'Position'],[3,'Gobo'],[4,'Color'],[5,'Beam'],[6,'Focus'],[7,'Control'],[8,'Shapers'],[9,'Video']];
+PTYPES.forEach(t=>{POOLS['PRE'+t[0]+'.']={items:{},list:null};});
+let curTab='Wing',presetType=4,poolPage=0,poolTimer=null;
+const PER_PAGE=48;   // 6 x 8
+function poolFeedback(k,v){
+  let m=/^(GRP|PRE\d+\.)(LIST|\d+)$/.exec(k);if(!m)return;
+  const P=POOLS[m[1]];if(!P)return;
+  if(m[2]==='LIST'){P.list=v?v.split(',').map(Number):[];Object.keys(P.items).forEach(n=>{if(P.list.indexOf(+n)<0)delete P.items[n];});}
+  else{const q=v.split('|');P.items[+m[2]]={name:q[0]||'',col:/^#[0-9a-f]{6}$/i.test(q[1]||'')?q[1]:''};}
+  clearTimeout(poolTimer);poolTimer=setTimeout(renderPool,80);
+}
+const poolView=el('div','width:552px;flex:none;display:none;flex-direction:column;gap:8px',body);
+body.insertBefore(poolView,ex);
+const poolHead=el('div','display:flex;gap:4px;align-items:center;height:34px',poolView);
+const poolTypes=el('div','display:flex;gap:4px;flex:1;min-width:0',poolHead);
+key(poolHead,'◀','height:34px;width:40px;flex:none',()=>{if(poolPage>0){poolPage--;renderPool();}});
+const poolPgLab=el('div','width:44px;text-align:center;color:#a1a1a6;flex:none',poolHead,'1');poolPgLab.className='mono';
+key(poolHead,'▶','height:34px;width:40px;flex:none',()=>{poolPage++;renderPool();});
+const poolGrid=el('div','flex:1;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));gap:5px',poolView);
+const typeBtns={};
+PTYPES.forEach(t=>{typeBtns[t[0]]=key(poolTypes,t[1],'height:34px;flex:1;min-width:0;font-size:10px;padding:0',()=>{presetType=t[0];poolPage=0;renderPool();});});
+const cells=[];
+for(let i=0;i<PER_PAGE;i++){
+  const b=key(poolGrid,'','height:auto;min-height:0;font-size:12px;white-space:normal;line-height:1.2',()=>poolTap(i));
+  cells.push(b);
+}
+function poolKey(){return curTab==='Groups'?'GRP':'PRE'+presetType+'.';}
+function objName(num){return curTab==='Groups'?'Group '+num:'Preset '+presetType+'.'+num;}
+function poolTap(i){
+  const num=poolPage*PER_PAGE+i+1,obj=objName(num);
+  if(S.cmd.trim()){                       // e.g. "Store " waiting -> "Store Group 7" + Enter
+    const c=S.cmd;typeText((/ $/.test(c)?'':' ')+obj);typeKey('{ENTER}');
+    osc('MA linia komend ← '+c.trim()+' '+obj);S.cmd='';showCmd();
+  } else cmdSend(obj);
+}
+function renderPool(){
+  if(curTab==='Wing')return;
+  const P=POOLS[poolKey()];
+  const maxNo=Math.max(0,...(P.list||[0]));const pages=Math.max(1,Math.ceil((maxNo+1)/PER_PAGE));
+  if(poolPage>=pages)poolPage=pages-1;
+  poolPgLab.textContent=(poolPage+1)+'/'+pages;
+  poolTypes.style.display=curTab==='Presets'?'flex':'none';
+  PTYPES.forEach(t=>{const b=typeBtns[t[0]],on=t[0]===presetType;b.style.background=on?'#ffc71a':'';b.style.color=on?'#1a1400':'';});
+  for(let i=0;i<PER_PAGE;i++){
+    const num=poolPage*PER_PAGE+i+1,it=P.items[num],b=cells[i];
+    if(it){
+      b.innerHTML='<span class="nm" style="white-space:normal;max-height:2.4em">'+esc(it.name||(curTab==='Groups'?'Group':'Preset'))+'</span><span class="sub">'+(curTab==='Groups'?num:presetType+'.'+num)+'</span>';
+      b.style.background=it.col?shade(it.col,0.42):'#3a3a3f';b.style.boxShadow=it.col?'inset 0 3px 0 '+it.col+', 0 2px 0 #000':'';b.style.color='#fff';b.style.opacity='1';
+    } else {
+      b.innerHTML='<span class="sub">'+(curTab==='Groups'?num:presetType+'.'+num)+'</span>';
+      b.style.background='#1e1e21';b.style.boxShadow='';b.style.color='';b.style.opacity='0.75';
+    }
+  }
+}
+function showTab(t){
+  curTab=t;poolPage=0;
+  const wing=t==='Wing';
+  ex.style.display=wing?'flex':'none';ms.style.display=wing?'flex':'none';poolView.style.display=wing?'none':'flex';
+  Object.keys(tabBtns).forEach(k=>{const on=k===t;tabBtns[k].style.background=on?'#ffc71a':'';tabBtns[k].style.color=on?'#1a1400':'';});
+  if(!wing)renderPool();
+  redrawAll.forEach(f=>f());
+}
+showTab('Wing');
 
 // ---- scale to screen
 let scale=1;

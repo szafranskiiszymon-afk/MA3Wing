@@ -126,6 +126,35 @@ local function execInfo()
     return out, table.concat(sig, ';')
 end
 
+-- zawartosc pul: grupy i presety (numer -> nazwa|kolor) + lista istniejacych numerow
+local PRESET_POOLS = {1, 2, 3, 4, 5, 6, 7, 8, 9}
+local POOL_MAX = 500
+local function poolScan()
+    local out, keys = {}, {}
+    local function scan(prefix, query)
+        local nums = {}
+        local ok, list = pcall(ObjectList, query)
+        if ok and type(list) == 'table' then
+            for _, h in ipairs(list) do
+                local no = tonumber(prop(h, 'no'))
+                if no then
+                    nums[#nums + 1] = no
+                    out[prefix .. no] = clean(prop(h, 'name')) .. '|' .. appearanceColor(h)
+                    keys[#keys + 1] = prefix .. no
+                end
+            end
+        end
+        table.sort(nums)
+        out[prefix .. 'LIST'] = table.concat(nums, ',')
+        keys[#keys + 1] = prefix .. 'LIST'
+    end
+    scan('GRP', 'Group 1 Thru ' .. POOL_MAX)
+    for _, t in ipairs(PRESET_POOLS) do scan('PRE' .. t .. '.', 'Preset ' .. t .. '.1 Thru ' .. t .. '.' .. POOL_MAX) end
+    local sig = {}
+    for _, k in ipairs(keys) do sig[#sig + 1] = k .. '=' .. out[k] end
+    return out, keys, table.concat(sig, ';')
+end
+
 -- tekst w linii komend MA (nazwa wlasciwosci rozni sie miedzy wersjami - probujemy kilku)
 local cmdProp = nil
 local function cmdLine()
@@ -139,7 +168,7 @@ local function cmdLine()
     return nil
 end
 
-local function writeState(file, page, vals, attrs, execs, cmd)
+local function writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys)
     local f, err = io.open(file, 'w')
     if not f then return false, err end
     for _, base in ipairs(ROWS) do
@@ -152,6 +181,9 @@ local function writeState(file, page, vals, attrs, execs, cmd)
         if execs and execs[n] then f:write('EXEC', n, '=', execs[n], '\n') end
     end
     if cmd ~= nil then f:write('CMDLINE=', clean(cmd), '\n') end
+    if pools and poolKeys then
+        for _, k in ipairs(poolKeys) do f:write(k, '=', pools[k], '\n') end
+    end
     attrs = attrs or {}
     f:write('ATTRN=', #attrs, '\n')
     for i, a in ipairs(attrs) do
@@ -177,12 +209,13 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v6), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v7), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
     local execs, lastExecSig = {}, nil
     local cmd, lastCmd = nil, nil
+    local pools, poolKeys, lastPoolSig = {}, {}, nil
     while MA3WingToken == token do
         local page = pageNumber()
         local changed = (page ~= lastPage)
@@ -193,6 +226,10 @@ local function run()
         end
         cmd = cmdLine()
         if cmd ~= lastCmd then lastCmd, changed = cmd, true end
+        if tick % 20 == 2 then                      -- pule grup i presetow co ~2 s
+            local pl, pk, psig = poolScan()
+            if psig ~= lastPoolSig then pools, poolKeys, lastPoolSig, changed = pl, pk, psig, true end
+        end
         if tick % 10 == 1 then                      -- nazwy i kolory co ~1 s
             local e, esig = execInfo()
             if esig ~= lastExecSig then execs, lastExecSig, changed = e, esig, true end
@@ -207,7 +244,7 @@ local function run()
             end
         end
         if changed then
-            local ok, err = writeState(file, page, vals, attrs, execs, cmd)
+            local ok, err = writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys)
             if ok then
                 last, lastPage = vals, page
             else
