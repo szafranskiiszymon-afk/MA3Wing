@@ -6,7 +6,7 @@ $HttpPorts    = @(8080, 8090, 8888, 9080, 18080)   # porty strony dla iPada - wy
 $ConsoleIP    = '127.0.0.1'   # gdzie dziala onPC (ten sam laptop = 127.0.0.1)
 $OscPort      = 8000          # port OSC ustawiony w onPC (Receive)
 $Prefix       = 'gma3'        # prefix ustawiony w onPC
-$FeedbackPort = 9000          # port, na ktory onPC wysyla feedback (Send); 0 = wylacz
+$FeedbackPorts = @(9000, 9100, 19000)   # porty feedbacku z onPC (Send) - pierwszy wolny; @() = wylacz
 # ======================
 
 $ErrorActionPreference = 'Stop'
@@ -67,9 +67,10 @@ function Read-Osc([byte[]]$d) {
 # --- gniazda ---
 $udp = New-Object System.Net.Sockets.UdpClient
 $udpIn = $null
-if ($FeedbackPort -gt 0) {
-    try { $udpIn = New-Object System.Net.Sockets.UdpClient($FeedbackPort) }
-    catch { Write-Host "Port feedbacku $FeedbackPort zajety - feedback wylaczony." -ForegroundColor Yellow }
+$FeedbackPort = 0
+foreach ($fp in $FeedbackPorts) {
+    try { $udpIn = New-Object System.Net.Sockets.UdpClient($fp); $FeedbackPort = $fp; break }
+    catch { Write-Host "Port feedbacku $fp zajety, probuje nastepny..." -ForegroundColor DarkGray }
 }
 $listener = $null
 $HttpPort = 0
@@ -95,7 +96,9 @@ Write-Host ''
 Write-Host '  MA3 Wing dziala.' -ForegroundColor Green
 Write-Host '  Na iPadzie (ta sama siec Wi-Fi) otworz w Safari:' -ForegroundColor White
 foreach ($ip in $ips) { Write-Host "     http://${ip}:$HttpPort" -ForegroundColor Cyan }
-Write-Host "  OSC -> ${ConsoleIP}:$OscPort  prefix '/$Prefix'   feedback <- port $FeedbackPort" -ForegroundColor DarkGray
+Write-Host "  OSC -> ${ConsoleIP}:$OscPort  prefix '/$Prefix'" -ForegroundColor DarkGray
+if ($udpIn) { Write-Host "  Feedback z onPC: ustaw w onPC linie OSC z Send na porcie $FeedbackPort (IP 127.0.0.1)" -ForegroundColor DarkGray }
+else { Write-Host "  Feedback wylaczony (porty zajete)." -ForegroundColor Yellow }
 Write-Host '  Ponizej widac kazda wiadomosc. Aby zakonczyc, zamknij to okno.' -ForegroundColor DarkGray
 Write-Host ''
 
@@ -148,7 +151,7 @@ try {
             try {
                 $ctx = $ctxTask.Result
                 if ($ctx.Request.IsWebSocketRequest) {
-                    $wsc = $ctx.AcceptWebSocketAsync($null).GetAwaiter().GetResult()
+                    $wsc = $ctx.AcceptWebSocketAsync([NullString]::Value).GetAwaiter().GetResult()
                     $buf = New-Object byte[] 16384
                     $seg = [ArraySegment[byte]]::new($buf)
                     $c = [pscustomobject]@{ Ws = $wsc.WebSocket; Buf = $buf; Seg = $seg; Text = ''; Who = $ctx.Request.RemoteEndPoint.Address.ToString(); Task = $null }
