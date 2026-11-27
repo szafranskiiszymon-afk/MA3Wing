@@ -1,0 +1,43 @@
+MA3 Wing – pulpit grandMA3 na iPadzie przez przeglądarkę
+=========================================================
+
+Pliki (trzymaj je razem w jednym folderze):
+  Uruchom MA3 Wing.bat   – tym uruchamiasz
+  MA3Wing.ps1            – most: strona dla iPada -> OSC -> onPC
+  index.html             – pulpit (fadery, klawisze)
+
+1) USTAWIENIA W grandMA3 onPC  (Menu -> In & Out -> OSC)
+   - Włącz "Enable Input" (i "Enable Output", jeśli chcesz feedback).
+   - Linia 1:  IP 127.0.0.1, Port 8000, Prefix gma3, Mode UDP,
+               Receive = Yes, Receive Command = Yes
+   - Linia 2 (opcjonalnie, feedback faderów):
+               IP 127.0.0.1, Port 9000, Prefix gma3, Mode UDP, Send = Yes
+
+2) URUCHOMIENIE NA LAPTOPIE
+   - Rozpakuj zip (najlepiej wcześniej: prawy klik na zip -> Właściwości -> zaznacz "Odblokuj").
+   - Kliknij dwa razy "Uruchom MA3 Wing.bat" i zgódź się na uprawnienia administratora
+     (potrzebne, żeby iPad mógł wejść na stronę i żeby dodać regułę zapory).
+   - Jeśli Windows pokaże "System Windows ochronił komputer": Więcej informacji -> Uruchom mimo to.
+   - W okienku zobaczysz adres, np.  http://192.168.1.20:8080
+
+3) NA iPADZIE
+   - iPad w tej samej sieci Wi-Fi co laptop.
+   - Otwórz w Safari adres z okienka.
+   - Kropka w lewym górnym rogu: zielona = połączono, czerwona = brak połączenia.
+   - Pełny ekran: Udostępnij -> "Do ekranu początkowego", potem uruchamiaj z ikony.
+
+4) SPRAWDZENIE
+   - Przesuń fader 201 albo naciśnij Go+.
+   - W okienku na laptopie pojawi się linia "-> /gma3/Page1/Fader201 ...".
+   - Jeśli linia jest, a onPC nie reaguje: sprawdź ustawienia z punktu 1.
+     W onPC możesz włączyć "Echo Input" w ustawieniach OSC – wtedy w System Monitor widać,
+     co dochodzi.
+   - Jeśli nic nie przychodzi do onPC na 127.0.0.1, zmień w MA3Wing.ps1 (Notatnik)
+     $ConsoleIP na adres laptopa z okienka (np. '192.168.1.20') i uruchom ponownie.
+
+5) ODKRYWANIE ADRESÓW ENKODERÓW
+   - Gdy włączona jest linia 2 (Send), w okienku pojawiają się linie "<- ..." – to, co
+     wysyła onPC. Pokręć enkoderem w onPC i zobacz, jaki adres się pojawi. Wklej mi go,
+     a podepnę enkodery w pulpicie.
+
+Zakończenie: zamknij okienko.
