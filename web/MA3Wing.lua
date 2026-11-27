@@ -4,9 +4,15 @@
 
 local COLUMNS = 15        -- ile kolumn executorow sprawdzac (x01..x15)
 local PERIOD  = 0.1       -- co ile sekund sprawdzac zmiany
-
 local ROWS = {200, 300, 400}
-local FILE = (os.getenv('TEMP') or os.getenv('TMP') or 'C:\\Windows\\Temp') .. '\\MA3Wing-faders.txt'
+
+local function say(t) if Printf then Printf('MA3 Wing: ' .. t) else print('MA3 Wing: ' .. t) end end
+
+local function stateFile()
+    local dir = nil
+    if os and os.getenv then dir = os.getenv('TEMP') or os.getenv('TMP') end
+    return (dir or 'C:\\Windows\\Temp') .. '\\MA3Wing-faders.txt'
+end
 
 local function faderValue(n)
     local ok, ex = pcall(GetExecutor, n)
@@ -25,9 +31,9 @@ local function pageNumber()
     return 1
 end
 
-local function writeState(page, vals)
-    local f = io.open(FILE, 'w')
-    if not f then return false end
+local function writeState(file, page, vals)
+    local f, err = io.open(file, 'w')
+    if not f then return false, err end
     for _, base in ipairs(ROWS) do
         for i = 1, COLUMNS do
             local n = base + i
@@ -39,15 +45,25 @@ local function writeState(page, vals)
     return true
 end
 
-return function()
+local function run()
+    -- diagnostyka: czego brakuje w tej wersji MA
+    if type(io) ~= 'table' or type(io.open) ~= 'function' then say('BLAD: brak biblioteki io (zapis plikow zablokowany)'); return end
+    if type(GetExecutor) ~= 'function' then say('BLAD: brak funkcji GetExecutor'); return end
+    if type(coroutine) ~= 'table' or type(coroutine.yield) ~= 'function' then say('BLAD: brak coroutine.yield'); return end
+
     if MA3WingSyncRunning then
         MA3WingForceResend = true
-        Printf('MA3 Wing sync: zapisuje wszystko ponownie')
+        say('zapisuje wszystko ponownie')
         return
     end
+
+    local file = stateFile()
+    local okw, errw = writeState(file, pageNumber(), {})
+    if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
+
     MA3WingSyncRunning = true
     MA3WingForceResend = true
-    Printf('MA3 Wing sync: start, plik: ' .. FILE)
+    say('start, plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage = {}, nil
     while MA3WingSyncRunning do
@@ -63,13 +79,22 @@ return function()
             end
         end
         if changed then
-            if writeState(page, vals) then
+            local ok, err = writeState(file, page, vals)
+            if ok then
                 last, lastPage, MA3WingForceResend = vals, page, false
             else
-                Printf('MA3 Wing sync: nie moge zapisac pliku ' .. FILE)
+                say('nie moge zapisac pliku: ' .. tostring(err))
                 coroutine.yield(2)
             end
         end
         coroutine.yield(PERIOD)
+    end
+end
+
+return function()
+    local ok, err = pcall(run)
+    if not ok then
+        MA3WingSyncRunning = false
+        say('BLAD: ' .. tostring(err))
     end
 end
