@@ -129,11 +129,32 @@ end
 -- zawartosc pul: grupy i presety (numer -> nazwa|kolor) + lista istniejacych numerow
 local PRESET_POOLS = {2, 6}          -- 2 = Position, 6 = Focus
 local POOL_MAX = 500
+local function children(h)
+    if h == nil or type(h) == 'string' then return {} end
+    local ok, c = pcall(function() return h:Children() end)
+    if ok and type(c) == 'table' then return c end
+    return {}
+end
+-- drugi sposob: bezposrednio z DataPool (gdy ObjectList nic nie zwraca)
+local function viaDataPool(kind, t)
+    local okd, dp = pcall(DataPool)
+    if not okd or dp == nil then return {} end
+    if kind == 'GRP' then return children(prop(dp, 'groups')) end
+    local pp = prop(dp, 'presetpools')
+    for _, pool in ipairs(children(pp)) do
+        if tonumber(prop(pool, 'no')) == t then return children(pool) end
+    end
+    local ok, pool = pcall(function() return pp[t] end)
+    if ok and pool ~= nil then return children(pool) end
+    return {}
+end
+local poolCounts = {}
 local function poolScan()
     local out, keys = {}, {}
-    local function scan(prefix, query)
+    local function scan(prefix, query, kind, t)
         local nums = {}
         local ok, list = pcall(ObjectList, query)
+        if not ok or type(list) ~= 'table' or #list == 0 then list = viaDataPool(kind, t); ok = true end
         if ok and type(list) == 'table' then
             for _, h in ipairs(list) do
                 local no = tonumber(prop(h, 'no'))
@@ -145,11 +166,12 @@ local function poolScan()
             end
         end
         table.sort(nums)
+        poolCounts[prefix] = #nums
         out[prefix .. 'LIST'] = table.concat(nums, ',')
         keys[#keys + 1] = prefix .. 'LIST'
     end
-    scan('GRP', 'Group 1 Thru ' .. POOL_MAX)
-    for _, t in ipairs(PRESET_POOLS) do scan('PRE' .. t .. '.', 'Preset ' .. t .. '.1 Thru ' .. t .. '.' .. POOL_MAX) end
+    scan('GRP', 'Group 1 Thru ' .. POOL_MAX, 'GRP')
+    for _, t in ipairs(PRESET_POOLS) do scan('PRE' .. t .. '.', 'Preset ' .. t .. '.1 Thru ' .. t .. '.' .. POOL_MAX, 'PRE', t) end
     local sig = {}
     for _, k in ipairs(keys) do sig[#sig + 1] = k .. '=' .. out[k] end
     return out, keys, table.concat(sig, ';')
@@ -209,7 +231,7 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v8), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v9), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
@@ -228,6 +250,10 @@ local function run()
         if cmd ~= lastCmd then lastCmd, changed = cmd, true end
         if tick % 20 == 2 then                      -- pule grup i presetow co ~2 s
             local pl, pk, psig = poolScan()
+            if lastPoolSig == nil then
+                say(string.format('pule: grupy=%d, presety Position=%d, Focus=%d',
+                    poolCounts['GRP'] or 0, poolCounts['PRE2.'] or 0, poolCounts['PRE6.'] or 0))
+            end
             if psig ~= lastPoolSig then pools, poolKeys, lastPoolSig, changed = pl, pk, psig, true end
         end
         if tick % 10 == 1 then                      -- nazwy i kolory co ~1 s
