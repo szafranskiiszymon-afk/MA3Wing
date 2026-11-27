@@ -1,0 +1,37 @@
+name: Zbuduj IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zainstaluj XcodeGen
+        run: brew install xcodegen
+
+      - name: Wygeneruj projekt Xcode
+        run: xcodegen generate
+
+      - name: Zbuduj aplikację (bez podpisu – podpisze Sideloadly)
+        run: |
+          xcodebuild -project MA3Wing.xcodeproj -target MA3Wing \
+            -configuration Release -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Spakuj do .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Release-iphoneos/MA3Wing.app Payload/
+          zip -qry MA3Wing.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MA3Wing-ipa
+          path: MA3Wing.ipa

@@ -1,0 +1,5 @@
+MA3Wing.xcodeproj/
+build/
+Payload/
+*.ipa
+.DS_Store
