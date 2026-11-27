@@ -178,15 +178,18 @@ function Read-StateFile {
     $script:stateStamp = $t
     if (-not $script:stateSeen) { $script:stateSeen = $true; Write-Host "<- wtyczka MA3Wing w onPC dziala (plik $($script:StateFile))" -ForegroundColor Green }
     $n = 0
+    $batch = New-Object System.Text.StringBuilder
     foreach ($l in $lines) {
         $kv = $l.Split('=')
         if ($kv.Count -ne 2) { continue }
         if ($script:fbCache[$kv[0]] -ne $kv[1]) {
             $script:fbCache[$kv[0]] = $kv[1]
-            Send-ToClients ("fb`t{0}`t{1}" -f $kv[0], $kv[1])
+            if ($batch.Length) { [void]$batch.Append("`n") }
+            [void]$batch.Append(("fb`t{0}`t{1}" -f $kv[0], $kv[1]))
             $n++
         }
     }
+    if ($batch.Length) { Send-ToClients $batch.ToString() }
     $now = [DateTime]::Now
     if ($n -gt 0 -and ($now - $script:lastStateLog).TotalMilliseconds -gt 1000) {
         $script:lastStateLog = $now
@@ -194,11 +197,18 @@ function Read-StateFile {
     }
 }
 
-function Send-ToClients([string]$text) {
-    $bytes = [Text.Encoding]::UTF8.GetBytes($text)
-    foreach ($c in @($clients)) {
-        try { $c.Ws.SendAsync([ArraySegment[byte]]::new($bytes), [Net.WebSockets.WebSocketMessageType]::Text, $true, $cancel).Wait(500) | Out-Null } catch {}
+function Send-Client($c, [string]$text) {
+    if ($c.Dead) { return }
+    if ($c.SendTask -and -not $c.SendTask.IsCompleted) {
+        try { if (-not $c.SendTask.Wait(300)) { $c.Dead = $true; return } } catch { $c.Dead = $true; return }
     }
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($text)
+        $c.SendTask = $c.Ws.SendAsync([ArraySegment[byte]]::new($bytes), [Net.WebSockets.WebSocketMessageType]::Text, $true, $cancel)
+    } catch { $c.Dead = $true }
+}
+function Send-ToClients([string]$text) {
+    foreach ($c in @($clients)) { Send-Client $c $text }
 }
 
 # --- klawiatura: wpisywanie w linie komend onPC (jak klawisze konsoli) ---
@@ -279,13 +289,20 @@ foreach ($u in $udpIns) { $u.Task = $u.Sock.ReceiveAsync() }
 
 try {
     while ($true) {
+        Read-StateFile
+        foreach ($c in @($clients)) {
+            if ($c.Dead) {
+                try { $c.Ws.Abort() } catch {}
+                $clients.Remove($c)
+                Write-Host "Rozlaczono (nie nadazal): $($c.Who)" -ForegroundColor DarkYellow
+            }
+        }
         $tasks = New-Object 'System.Collections.Generic.List[System.Threading.Tasks.Task]'
         $tasks.Add($ctxTask)
         foreach ($u in $udpIns) { $tasks.Add($u.Task) }
         foreach ($c in $clients) { $tasks.Add($c.Task) }
         $offset = 1 + $udpIns.Count
 
-        Read-StateFile
         $idx = [System.Threading.Tasks.Task]::WaitAny($tasks.ToArray(), 100)
         if ($idx -lt 0) { continue }
 
@@ -297,15 +314,13 @@ try {
                     $wsc = $ctx.AcceptWebSocketAsync([NullString]::Value).GetAwaiter().GetResult()
                     $buf = New-Object byte[] 16384
                     $seg = [ArraySegment[byte]]::new($buf)
-                    $c = [pscustomobject]@{ Ws = $wsc.WebSocket; Buf = $buf; Seg = $seg; Text = ''; Who = $ctx.Request.RemoteEndPoint.Address.ToString(); Task = $null }
+                    $c = [pscustomobject]@{ Ws = $wsc.WebSocket; Buf = $buf; Seg = $seg; Text = ''; Who = $ctx.Request.RemoteEndPoint.Address.ToString(); Task = $null; SendTask = $null; Dead = $false }
                     $c.Task = $c.Ws.ReceiveAsync($seg, $cancel)
                     [void]$clients.Add($c)
                     Write-Host "Polaczono: $($c.Who)" -ForegroundColor Green
-                    foreach ($k in @($fbCache.Keys)) {
-                        try {
-                            $bytes = [Text.Encoding]::UTF8.GetBytes(("fb`t{0}`t{1}" -f $k, $fbCache[$k]))
-                            $c.Ws.SendAsync([ArraySegment[byte]]::new($bytes), [Net.WebSockets.WebSocketMessageType]::Text, $true, $cancel).Wait(500) | Out-Null
-                        } catch {}
+                    if ($fbCache.Count -gt 0) {
+                        $all = (@($fbCache.Keys) | ForEach-Object { "fb`t{0}`t{1}" -f $_, $fbCache[$_] }) -join "`n"
+                        Send-Client $c $all
                     }
                     if ($fbCache.Count -gt 0) { Write-Host "  wyslano iPadowi $($fbCache.Count) pozycji z MA" -ForegroundColor DarkGray }
                 } else {
@@ -337,7 +352,7 @@ try {
                     $local = $a
                     if ($Prefix -and $local.StartsWith('/' + $Prefix + '/')) { $local = $local.Substring($Prefix.Length + 1) }
                     if ($local -match '^/Page\d+/Fader\d+$') { $fbCache[$local] = $v }
-                    Send-ToClients ("fb`t{0}`t{1}" -f $local, $v)
+                    if ($local -match '^/Page\d+/Fader\d+$') { Send-ToClients ("fb`t{0}`t{1}" -f $local, $v) }
                     $now = [DateTime]::Now
                     if (($local -notmatch '^/\d+\.') -and (-not $lastFbLog.ContainsKey($a) -or ($now - $lastFbLog[$a]).TotalMilliseconds -gt 1000)) {
                         $lastFbLog[$a] = $now

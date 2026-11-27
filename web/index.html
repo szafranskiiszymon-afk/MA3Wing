@@ -68,9 +68,11 @@ function connect(){
   ws.onopen=()=>{wsOk=true;dotEl.style.background='#34c759';hostEl.textContent='połączono: '+location.host;};
   ws.onclose=()=>{wsOk=false;dotEl.style.background='#ff453a';hostEl.textContent='brak połączenia – ponawiam…';setTimeout(connect,1500);};
   ws.onerror=()=>{try{ws.close()}catch(e){}};
-  ws.onmessage=e=>feedback(String(e.data));
+  ws.onmessage=e=>{String(e.data).split('\n').forEach(l=>{try{feedback(l);}catch(err){}});};
 }
 // feedback from onPC: "fb<TAB>/gma3/Page1/Fader201<TAB>65"
+let redrawPending=false;
+function scheduleRedraw(){if(redrawPending)return;redrawPending=true;requestAnimationFrame(()=>{redrawPending=false;redrawAll.forEach(f=>f());});}
 function feedback(line){
   const p=line.split('\t');if(p[0]!=='fb')return;
   if(/^ATTR/.test(p[1]||'')){attrFeedback(p[1],p[2]||'');return;}
@@ -82,7 +84,7 @@ function feedback(line){
   if(!m||isNaN(v)||+m[1]!==S.page)return;
   const n=+m[2],val=clamp(v);
   if(n>=300)S.kn[n]=val;else S.f[n]=val;
-  redrawAll.forEach(f=>f());
+  scheduleRedraw();
 }
 function vib(){if(navigator.vibrate)try{navigator.vibrate(8)}catch(e){}}
 function showCmd(){cmdEl.innerHTML='<span style="color:#ffc71a">['+S.page+']&gt;</span> '+S.cmd.replace(/</g,'&lt;');}
