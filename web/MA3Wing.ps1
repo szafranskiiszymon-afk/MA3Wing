@@ -71,17 +71,18 @@ $udpIn = $null
 $FeedbackPort = 0
 # onPC sam zajmuje port linii Send (0.0.0.0:port). Bindujemy sie konkretnie na 127.0.0.1:port -
 # Windows przekazuje wtedy pakiety wyslane na 127.0.0.1 do bardziej konkretnego gniazda (naszego).
-function New-FeedbackSocket([int]$port) {
+function New-FeedbackSocket([int]$port, [Net.IPAddress]$ip = [Net.IPAddress]::Loopback) {
     $s = New-Object System.Net.Sockets.UdpClient
     try {
         $s.ExclusiveAddressUse = $false
         $s.Client.SetSocketOption([Net.Sockets.SocketOptionLevel]::Socket, [Net.Sockets.SocketOptionName]::ReuseAddress, $true)
-        $s.Client.Bind((New-Object Net.IPEndPoint([Net.IPAddress]::Loopback, $port)))
+        $s.Client.Bind((New-Object Net.IPEndPoint($ip, $port)))
         return $s
     } catch { try { $s.Close() } catch {}; throw }
 }
+$udpIns = New-Object System.Collections.ArrayList
 foreach ($fp in $FeedbackPorts) {
-    try { $udpIn = New-FeedbackSocket $fp; $FeedbackPort = $fp; break }
+    try { $udpIn = New-FeedbackSocket $fp; $FeedbackPort = $fp; [void]$udpIns.Add([pscustomobject]@{ Sock = $udpIn; Task = $null; Ip = '127.0.0.1' }); break }
     catch { Write-Host "Port feedbacku $fp niedostepny ($($_.Exception.InnerException.Message)), probuje nastepny..." -ForegroundColor DarkGray }
 }
 $listener = $null
@@ -134,6 +135,15 @@ if ($gmaIds.Count -eq 0) {
 [void](Show-PortOwner 'UDP' 9000)
 [void](Show-PortOwner 'TCP' 8080)
 
+if ($FeedbackPort -gt 0) {
+    $lan = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | Select-Object -ExpandProperty IPAddress)
+    foreach ($ip in $lan) {
+        try { $sx = New-FeedbackSocket $FeedbackPort ([Net.IPAddress]::Parse($ip)); [void]$udpIns.Add([pscustomobject]@{ Sock = $sx; Task = $null; Ip = $ip }) }
+        catch { Write-Host "  [diag] nie moge sluchac feedbacku na ${ip}:$FeedbackPort" -ForegroundColor DarkGray }
+    }
+    Write-Host ("  [diag] feedback slucham na: " + (($udpIns | ForEach-Object { "$($_.Ip):$FeedbackPort" }) -join ', ')) -ForegroundColor Cyan
+}
+
 # --- komunikat startowy ---
 $ips = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
          Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
@@ -178,16 +188,15 @@ function Invoke-Line([string]$line) {
 }
 
 $ctxTask = $listener.GetContextAsync()
-$udpTask = $null
-if ($udpIn) { $udpTask = $udpIn.ReceiveAsync() }
+foreach ($u in $udpIns) { $u.Task = $u.Sock.ReceiveAsync() }
 
 try {
     while ($true) {
         $tasks = New-Object 'System.Collections.Generic.List[System.Threading.Tasks.Task]'
         $tasks.Add($ctxTask)
-        if ($udpTask) { $tasks.Add($udpTask) }
+        foreach ($u in $udpIns) { $tasks.Add($u.Task) }
         foreach ($c in $clients) { $tasks.Add($c.Task) }
-        $offset = 1; if ($udpTask) { $offset = 2 }
+        $offset = 1 + $udpIns.Count
 
         $idx = [System.Threading.Tasks.Task]::WaitAny($tasks.ToArray(), 500)
         if ($idx -lt 0) { continue }
@@ -222,10 +231,11 @@ try {
             } catch { Write-Host "Blad polaczenia: $($_.Exception.Message)" -ForegroundColor Yellow }
             $ctxTask = $listener.GetContextAsync()
         }
-        elseif ($udpTask -and $idx -eq 1) {
+        elseif ($idx -lt $offset) {
             # --- feedback z onPC ---
+            $u = $udpIns[$idx - 1]
             try {
-                $r = $udpTask.Result
+                $r = $u.Task.Result
                 $m = Read-Osc $r.Buffer
                 if ($m) {
                     $a = $m[0]; $v = $m[1]
@@ -239,7 +249,7 @@ try {
                     }
                 }
             } catch {}
-            $udpTask = $udpIn.ReceiveAsync()
+            $u.Task = $u.Sock.ReceiveAsync()
         }
         else {
             # --- wiadomosc z iPada ---
@@ -267,5 +277,5 @@ finally {
     try { Stop-Transcript | Out-Null } catch {}
     $listener.Stop()
     $udp.Close()
-    if ($udpIn) { $udpIn.Close() }
+    foreach ($u in $udpIns) { try { $u.Sock.Close() } catch {} }
 }
