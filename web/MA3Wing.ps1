@@ -18,6 +18,7 @@ if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     exit
 }
 $Host.UI.RawUI.WindowTitle = 'MA3 Wing - most OSC'
+try { Start-Transcript -Path (Join-Path $PSScriptRoot 'MA3Wing-log.txt') -Force | Out-Null } catch {}
 $IndexPath = Join-Path $PSScriptRoot 'index.html'
 if (-not (Test-Path $IndexPath)) { Write-Host "Brak pliku index.html obok skryptu." -ForegroundColor Red; return }
 
@@ -252,6 +253,7 @@ try {
     }
 }
 finally {
+    try { Stop-Transcript | Out-Null } catch {}
     $listener.Stop()
     $udp.Close()
     if ($udpIn) { $udpIn.Close() }
