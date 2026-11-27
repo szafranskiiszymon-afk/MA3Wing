@@ -2,7 +2,7 @@
 # Uruchamiaj przez "Uruchom MA3 Wing.bat". Zamkniecie okna = koniec.
 
 # ===== USTAWIENIA =====
-$HttpPort     = 8080          # port strony dla iPada
+$HttpPorts    = @(8080, 8090, 8888, 9080, 18080)   # porty strony dla iPada - wybierany pierwszy wolny
 $ConsoleIP    = '127.0.0.1'   # gdzie dziala onPC (ten sam laptop = 127.0.0.1)
 $OscPort      = 8000          # port OSC ustawiony w onPC (Receive)
 $Prefix       = 'gma3'        # prefix ustawiony w onPC
@@ -20,14 +20,6 @@ if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 $Host.UI.RawUI.WindowTitle = 'MA3 Wing - most OSC'
 $IndexPath = Join-Path $PSScriptRoot 'index.html'
 if (-not (Test-Path $IndexPath)) { Write-Host "Brak pliku index.html obok skryptu." -ForegroundColor Red; return }
-
-# --- zapora: pozwol iPadowi wejsc na port strony ---
-try {
-    if (-not (Get-NetFirewallRule -DisplayName 'MA3 Wing' -ErrorAction SilentlyContinue)) {
-        New-NetFirewallRule -DisplayName 'MA3 Wing' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpPort -Profile Any | Out-Null
-        Write-Host "Dodano regule zapory 'MA3 Wing' (TCP $HttpPort)." -ForegroundColor DarkGray
-    }
-} catch { Write-Host "Nie udalo sie dodac reguly zapory: $_" -ForegroundColor Yellow }
 
 # --- OSC: kodowanie / dekodowanie ---
 function Write-OscString([System.IO.MemoryStream]$ms, [string]$s) {
@@ -79,10 +71,21 @@ if ($FeedbackPort -gt 0) {
     try { $udpIn = New-Object System.Net.Sockets.UdpClient($FeedbackPort) }
     catch { Write-Host "Port feedbacku $FeedbackPort zajety - feedback wylaczony." -ForegroundColor Yellow }
 }
-$listener = New-Object System.Net.HttpListener
-$listener.Prefixes.Add("http://+:$HttpPort/")
-try { $listener.Start() }
-catch { Write-Host "Nie moge uruchomic strony na porcie ${HttpPort}: $_" -ForegroundColor Red; return }
+$listener = $null
+$HttpPort = 0
+foreach ($p in $HttpPorts) {
+    $l = New-Object System.Net.HttpListener
+    $l.Prefixes.Add("http://+:$p/")
+    try { $l.Start(); $listener = $l; $HttpPort = $p; break }
+    catch { Write-Host "Port $p zajety przez inny program, probuje nastepny..." -ForegroundColor DarkGray; try { $l.Close() } catch {} }
+}
+if (-not $listener) { Write-Host "Wszystkie porty ($($HttpPorts -join ', ')) sa zajete. Wpisz inny port w MA3Wing.ps1." -ForegroundColor Red; return }
+
+# --- zapora: pozwol iPadowi wejsc na port strony ---
+try {
+    Get-NetFirewallRule -DisplayName 'MA3 Wing' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+    New-NetFirewallRule -DisplayName 'MA3 Wing' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpPort -Profile Any | Out-Null
+} catch { Write-Host "Nie udalo sie ustawic zapory: $_" -ForegroundColor Yellow }
 
 # --- komunikat startowy ---
 $ips = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
