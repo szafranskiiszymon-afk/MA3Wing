@@ -88,6 +88,32 @@ try {
     New-NetFirewallRule -DisplayName 'MA3 Wing' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpPort -Profile Any | Out-Null
 } catch { Write-Host "Nie udalo sie ustawic zapory: $_" -ForegroundColor Yellow }
 
+# --- diagnostyka: kto nasluchuje na porcie OSC onPC ---
+function Show-PortOwner([string]$proto, [int]$port) {
+    $eps = if ($proto -eq 'UDP') { @(Get-NetUDPEndpoint -LocalPort $port -ErrorAction SilentlyContinue) }
+           else { @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) }
+    foreach ($e in $eps) {
+        $pn = '?'; try { $pn = (Get-Process -Id $e.OwningProcess -ErrorAction Stop).ProcessName } catch {}
+        Write-Host ("  [diag] {0} {1}: adres {2}, program '{3}'" -f $proto, $port, $e.LocalAddress, $pn) -ForegroundColor DarkGray
+    }
+    return ,$eps
+}
+Write-Host ''
+$oscEps = Show-PortOwner 'UDP' $OscPort
+if ($oscEps.Count -eq 0) {
+    Write-Host "  UWAGA: nic nie nasluchuje na UDP $OscPort." -ForegroundColor Yellow
+    Write-Host "  onPC nie odbiera OSC na tym porcie: sprawdz w onPC Menu > In & Out > OSC:" -ForegroundColor Yellow
+    Write-Host "  'Enable Input' wlaczone, linia z Port $OscPort i Receive = Yes." -ForegroundColor Yellow
+} else {
+    $specific = @($oscEps | Where-Object { $_.LocalAddress -notin @('0.0.0.0', '::', '127.0.0.1', '::1') } | Select-Object -First 1)
+    if ($specific.Count -gt 0 -and $ConsoleIP -eq '127.0.0.1') {
+        $ConsoleIP = $specific[0].LocalAddress
+        Write-Host "  onPC nasluchuje tylko na $ConsoleIP - wysylam OSC na ten adres." -ForegroundColor DarkGray
+    }
+}
+[void](Show-PortOwner 'UDP' 9000)
+[void](Show-PortOwner 'TCP' 8080)
+
 # --- komunikat startowy ---
 $ips = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
          Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
