@@ -111,6 +111,14 @@ if ($oscEps.Count -eq 0) {
         Write-Host "  onPC nasluchuje tylko na $ConsoleIP - wysylam OSC na ten adres." -ForegroundColor DarkGray
     }
 }
+$gmaIds = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like '*gma3*' -or $_.ProcessName -like 'app_*' } | Select-Object -ExpandProperty Id)
+if ($gmaIds.Count -eq 0) {
+    Write-Host "  [diag] Nie widze procesu onPC (app_gma3) - czy onPC jest uruchomiony?" -ForegroundColor Yellow
+} else {
+    $u = @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue | Where-Object { $gmaIds -contains $_.OwningProcess } | Sort-Object LocalPort)
+    $list = ($u | ForEach-Object { "$($_.LocalAddress):$($_.LocalPort)" }) -join ', '
+    Write-Host "  [diag] onPC nasluchuje na UDP: $list" -ForegroundColor Cyan
+}
 [void](Show-PortOwner 'UDP' 9000)
 [void](Show-PortOwner 'TCP' 8080)
 
