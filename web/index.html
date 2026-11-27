@@ -50,10 +50,16 @@ function cmdSend(c){tx('/cmd','s',c);}
 // Executor key like on the console: if a command is pending in the command line
 // (e.g. "Store", "Update", "Copy", "Delete", "Edit", "Label"...), the key completes it with
 // that executor instead of firing the executor: "Store" + key 201 -> Store Exec 1.201
+
 const swallowed=new Set();
 function keyMsg(n,d){
+  if(d&&S.cmd.trim()){                        // e.g. "Store " waiting -> "Store Exec 201" + Enter
+    swallowed.add(n);
+    const c=S.cmd;typeText((/ $/.test(c)?'':' ')+'Exec '+n);typeKey('{ENTER}');
+    osc('MA linia komend ← '+c.trim()+' Exec '+n);S.cmd='';showCmd();return;
+  }
+  if(!d&&swallowed.has(n)){swallowed.delete(n);return;}
   tx('/Page'+S.page+'/Key'+n,'i',d?1:0);
-  if(d&&S.cmd){S.cmd='';showCmd();}   // MA consumed the pending command
 }
 function connect(){
   if(!/^https?:/.test(location.protocol)){hostEl.textContent='otwórz przez adres laptopa';return;}
@@ -68,6 +74,7 @@ function feedback(line){
   const p=line.split('\t');if(p[0]!=='fb')return;
   if(/^ATTR/.test(p[1]||'')){attrFeedback(p[1],p[2]||'');return;}
   if(/^EXEC\d+$/.test(p[1]||'')){applyExec(+p[1].slice(4),p[2]||'');return;}
+  if(p[1]==='CMDLINE'){S.cmd=(p[2]||'').replace(/^\s+/,'');if(S.cmd&&!/ $/.test(S.cmd))S.cmd+=' ';showCmd();return;}
   if(touching>0)return;
   const m=/Page(\d+)\/Fader(\d+)$/.exec(p[1]||'');const v=parseFloat(p[2]);
   if(!m||isNaN(v)||+m[1]!==S.page)return;
@@ -140,6 +147,13 @@ function applyExec(n,v){
 // S.cmd only mirrors what we typed (MA may consume it when you click in onPC).
 function typeText(t){if(wsOk){try{ws.send('!keys\tt\t'+t);}catch(e){}}}
 function typeKey(k){if(wsOk){try{ws.send('!keys\tk\t'+k);}catch(e){}}}
+// press/release of a real MA key via its keyboard shortcut (Store=S, Update=U): holding works like on the console
+function holdKey(dir,letter){if(wsOk){try{ws.send('!hold\t'+dir+'\t'+letter);}catch(e){}}}
+function holdBtn(parent,label,letter,bg,fg){
+  return key(parent,label,'height:auto;min-height:0;background:'+bg+';color:'+fg,
+    ()=>{holdKey('d',letter);const c=S.cmd;S.cmd=c+(c&&!/ $/.test(c)?' ':'')+label+' ';showCmd();osc('MA klawisz '+label+' (przytrzymaj = opcje)');},
+    ()=>holdKey('u',letter));
+}
 function pad(kind,v){
   const c=S.cmd;
   if(kind==='d'){const t=(c&&!/[0-9. ]$/.test(c))?' '+v:v;typeText(t);S.cmd=c+t;}
@@ -351,7 +365,7 @@ const gF=el('div','display:grid;grid-template-columns:repeat(3,48px);grid-auto-r
 kw(gF,'Fixture',B,W);pk(gF,'Channel','kw','Channel',B,W,'font-size:10px');kw(gF,'Group',B,W);
 kw(gF,'Preset',B,W);pk(gF,'Sequ','kw','Sequence',B,W);kw(gF,'Cue',B,W);
 kw(gF,'Edit');kw(gF,'Assign');kw(gF,'Time');
-kw(gF,'Update',R,W);el('div','',gF);kw(gF,'Store',R,W);
+holdBtn(gF,'Update','U',R,W);el('div','',gF);holdBtn(gF,'Store','S',R,W);
 const np=el('div','display:grid;grid-template-columns:repeat(4,'+(U+4)+'px);grid-auto-rows:'+U+'px;gap:'+GP+'px',loB);
 const d=n=>{const b=pk(np,n,'d',n,N,W);b.style.fontSize='16px';};
 d('7');d('8');d('9');kw(np,'+');d('4');d('5');d('6');kw(np,'Thru');d('1');d('2');d('3');kw(np,'-');d('0');pk(np,'.','dot','.',N,W);kw(np,'If');kw(np,'At',A,AT);

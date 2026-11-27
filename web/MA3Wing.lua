@@ -126,7 +126,20 @@ local function execInfo()
     return out, table.concat(sig, ';')
 end
 
-local function writeState(file, page, vals, attrs, execs)
+-- tekst w linii komend MA (nazwa wlasciwosci rozni sie miedzy wersjami - probujemy kilku)
+local cmdProp = nil
+local function cmdLine()
+    local ok, co = pcall(CmdObj)
+    if not ok or co == nil then return nil end
+    local names = cmdProp and {cmdProp} or {'cmdtext', 'text', 'cmdline', 'input', 'commandline', 'edittext'}
+    for _, n in ipairs(names) do
+        local ok2, v = pcall(function() return co[n] end)
+        if ok2 and type(v) == 'string' then cmdProp = n; return v end
+    end
+    return nil
+end
+
+local function writeState(file, page, vals, attrs, execs, cmd)
     local f, err = io.open(file, 'w')
     if not f then return false, err end
     for _, base in ipairs(ROWS) do
@@ -138,6 +151,7 @@ local function writeState(file, page, vals, attrs, execs)
     for _, n in ipairs(EXECS) do
         if execs and execs[n] then f:write('EXEC', n, '=', execs[n], '\n') end
     end
+    if cmd ~= nil then f:write('CMDLINE=', clean(cmd), '\n') end
     attrs = attrs or {}
     f:write('ATTRN=', #attrs, '\n')
     for i, a in ipairs(attrs) do
@@ -163,11 +177,12 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v5), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v6), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
     local execs, lastExecSig = {}, nil
+    local cmd, lastCmd = nil, nil
     while MA3WingToken == token do
         local page = pageNumber()
         local changed = (page ~= lastPage)
@@ -176,6 +191,8 @@ local function run()
             local l, sig = attrList()
             if sig ~= lastSig then attrs, lastSig, changed = l, sig, true end
         end
+        cmd = cmdLine()
+        if cmd ~= lastCmd then lastCmd, changed = cmd, true end
         if tick % 10 == 1 then                      -- nazwy i kolory co ~1 s
             local e, esig = execInfo()
             if esig ~= lastExecSig then execs, lastExecSig, changed = e, esig, true end
@@ -190,7 +207,7 @@ local function run()
             end
         end
         if changed then
-            local ok, err = writeState(file, page, vals, attrs, execs)
+            local ok, err = writeState(file, page, vals, attrs, execs, cmd)
             if ok then
                 last, lastPage = vals, page
             else

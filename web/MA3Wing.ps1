@@ -205,6 +205,33 @@ function Send-ToClients([string]$text) {
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName Microsoft.VisualBasic
 $script:maPid = 0
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public static class MA3WingKB { [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra); }
+"@
+function Focus-MA {
+    $p = $null
+    if ($script:maPid) { $p = Get-Process -Id $script:maPid -ErrorAction SilentlyContinue }
+    if (-not $p -or $p.MainWindowHandle -eq 0) {
+        $p = Get-Process -ErrorAction SilentlyContinue | Where-Object { ($_.ProcessName -like '*gma3*') -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+    }
+    if (-not $p) { Write-Host "Nie widze okna onPC" -ForegroundColor Yellow; return $false }
+    $script:maPid = $p.Id
+    try { [Microsoft.VisualBasic.Interaction]::AppActivate($p.Id) } catch {}
+    Start-Sleep -Milliseconds 30
+    return $true
+}
+# przytrzymanie prawdziwego klawisza MA przez jego skrot (Store = S, Update = U)
+function Send-MAHold([string]$dir, [string]$letter) {
+    if (-not $ShortcutsOn) {
+        if ($dir -eq 'd') { $w = @{ 'S' = 'Store'; 'U' = 'Update' }[$letter]; if ($w) { Send-MAKeys 't' ($w + ' ') } }
+        return
+    }
+    if ($dir -eq 'd' -and -not (Focus-MA)) { return }
+    $vk = [byte][char]$letter.ToUpper()
+    if ($dir -eq 'd') { [MA3WingKB]::keybd_event($vk, 0, 0, [UIntPtr]::Zero); Write-Host "-> klawisz MA: $letter (wcisniety)" }
+    else { [MA3WingKB]::keybd_event($vk, 0, 2, [UIntPtr]::Zero); Write-Host "-> klawisz MA: $letter (puszczony)" }
+}
 function Send-MAKeys([string]$mode, [string]$text) {
     if ($mode -eq 't') {
         # tekst: znaki specjalne SendKeys trzeba ujac w nawiasy klamrowe
@@ -232,6 +259,7 @@ function Invoke-Line([string]$line) {
     $parts = $line -split "`t", 3
     if ($parts.Count -lt 3) { return }
     if ($parts[0] -eq '!keys') { Send-MAKeys $parts[1] $parts[2]; return }
+    if ($parts[0] -eq '!hold') { Send-MAHold $parts[1] $parts[2]; return }
     $addr = $parts[0]
     if ($Prefix) { $addr = '/' + $Prefix + $addr }
     try {
