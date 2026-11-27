@@ -54,10 +54,8 @@ function cmdSend(c){tx('/cmd','s',c);}
 
 const swallowed=new Set();
 function keyMsg(n,d){
-  if(d&&S.cmd.trim()){                        // e.g. "Store " waiting -> "Store Exec 201" + Enter
-    swallowed.add(n);
-    const c=S.cmd;typeText((/ $/.test(c)?'':' ')+'Exec '+n);typeKey('{ENTER}');
-    osc('MA linia komend ← '+c.trim()+' Exec '+n);S.cmd='';showCmd();return;
+  if(d&&S.cmd.trim()){                        // e.g. "Store " waiting -> "Store Exec 201"
+    swallowed.add(n);completeWith('Exec '+n);return;
   }
   if(!d&&swallowed.has(n)){swallowed.delete(n);return;}
   tx('/Page'+S.page+'/Key'+n,'i',d?1:0);
@@ -78,7 +76,8 @@ function feedback(line){
   if(/^ATTR/.test(p[1]||'')){attrFeedback(p[1],p[2]||'');return;}
   if(/^EXEC\d+$/.test(p[1]||'')){applyExec(+p[1].slice(4),p[2]||'');return;}
   if(/^(GRP|PRE\d+\.)/.test(p[1]||'')){poolFeedback(p[1],p[2]||'');return;}
-  if(p[1]==='CMDLINE'){S.cmd=(p[2]||'').replace(/^\s+/,'');if(S.cmd&&!/ $/.test(S.cmd))S.cmd+=' ';showCmd();return;}
+  if(p[1]==='KEYS'){maTyped=(p[2]==='ok');return;}
+  if(p[1]==='CMDLINE'){if(!maTyped&&S.cmd)return;/* pending command lives only on the iPad */S.cmd=(p[2]||'').replace(/^\s+/,'');if(S.cmd&&!/ $/.test(S.cmd))S.cmd+=' ';showCmd();return;}
   if(touching>0)return;
   const m=/Page(\d+)\/Fader(\d+)$/.exec(p[1]||'');const v=parseFloat(p[2]);
   if(!m||isNaN(v)||+m[1]!==S.page)return;
@@ -151,6 +150,13 @@ function applyExec(n,v){
 // acts as a keyboard), exactly like pressing the key on a console: "Store" waits in MA's
 // command line and you can finish it with the mouse in onPC or with an executor key.
 // S.cmd only mirrors what we typed (MA may consume it when you click in onPC).
+// Finish a pending command with an object. Works whether onPC is visible or minimized:
+// Esc clears what we typed into MA (skipped by the bridge if onPC is minimized), then the whole
+// command goes over OSC, e.g. "Store Preset 2.3".
+let maTyped=true;      // false when the bridge could not type into onPC (minimized)
+function completeWith(obj){
+  const c=S.cmd.trim();typeKey('{ESC}');cmdSend(c+' '+obj);S.cmd='';showCmd();
+}
 function typeText(t){if(wsOk){try{ws.send('!keys\tt\t'+t);}catch(e){}}}
 function typeKey(k){if(wsOk){try{ws.send('!keys\tk\t'+k);}catch(e){}}}
 // press/release of a real MA key via its keyboard shortcut (Store=S, Update=U): holding works like on the console
@@ -166,7 +172,7 @@ function pad(kind,v){
   else if(kind==='dot'){typeText('.');S.cmd=c+'.';}
   else if(kind==='kw'){const t=(c&&!/ $/.test(c)?' ':'')+v+' ';typeText(t);S.cmd=c+t;}
   else if(kind==='dir')cmdSend(v);
-  else if(kind==='please'){typeKey('{ENTER}');S.cmd='';}
+  else if(kind==='please'){if(c.trim()){typeKey('{ESC}');cmdSend(c.trim());}else typeKey('{ENTER}');S.cmd='';}
   else if(kind==='clear'){if(c){typeKey('{ESC}');S.cmd='';}else cmdSend('Clear');}
   else if(kind==='oops'){if(c){const m=/(\S+\s*)$/.exec(c);const n=m?m[1].length:1;typeKey('{BS '+n+'}');S.cmd=c.slice(0,c.length-n);}else cmdSend('Oops');}
   else if(kind==='bs'){typeKey('{BS}');S.cmd=c.slice(0,-1);}
@@ -427,9 +433,8 @@ function poolKey(){return curTab==='Groups'?'GRP':'PRE'+presetType+'.';}
 function objName(num){return curTab==='Groups'?'Group '+num:'Preset '+presetType+'.'+num;}
 function poolTap(i){
   const num=poolPage*PER_PAGE+i+1,obj=objName(num);
-  if(S.cmd.trim()){                       // e.g. "Store " waiting -> "Store Group 7" + Enter
-    const c=S.cmd;typeText((/ $/.test(c)?'':' ')+obj);typeKey('{ENTER}');
-    osc('MA linia komend ← '+c.trim()+' '+obj);S.cmd='';showCmd();
+  if(S.cmd.trim()){                       // e.g. "Store " waiting -> "Store Preset 2.3"
+    completeWith(obj);
   } else cmdSend(curTab==='Groups'?obj:'At '+obj);   // presets: apply to the current selection
 }
 function renderPool(){

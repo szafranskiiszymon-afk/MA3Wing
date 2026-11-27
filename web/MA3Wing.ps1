@@ -217,7 +217,10 @@ Add-Type -AssemblyName Microsoft.VisualBasic
 $script:maPid = 0
 Add-Type @"
 using System; using System.Runtime.InteropServices;
-public static class MA3WingKB { [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra); }
+public static class MA3WingKB {
+  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+}
 "@
 function Focus-MA {
     $p = $null
@@ -227,6 +230,11 @@ function Focus-MA {
     }
     if (-not $p) { Write-Host "Nie widze okna onPC" -ForegroundColor Yellow; return $false }
     $script:maPid = $p.Id
+    if ([MA3WingKB]::IsIconic($p.MainWindowHandle)) {
+        # onPC zminimalizowany (np. otwarty wizualizer) - nie wyciagamy go na wierzch, iPad wysle cala komende przez OSC
+        Write-Host "onPC zminimalizowany - klawisze pomijam, komenda pojdzie przez OSC" -ForegroundColor DarkGray
+        return $false
+    }
     try { [Microsoft.VisualBasic.Interaction]::AppActivate($p.Id) } catch {}
     Start-Sleep -Milliseconds 30
     return $true
@@ -237,11 +245,14 @@ function Send-MAHold([string]$dir, [string]$letter) {
         if ($dir -eq 'd') { $w = @{ 'S' = 'Store'; 'U' = 'Update' }[$letter]; if ($w) { Send-MAKeys 't' ($w + ' ') } }
         return
     }
-    if ($dir -eq 'd' -and -not (Focus-MA)) { return }
+    if ($dir -eq 'd' -and -not (Focus-MA)) { Send-KeysResult 'skipped'; return }
+    if ($dir -eq 'd') { Send-KeysResult 'ok' }
     $vk = [byte][char]$letter.ToUpper()
     if ($dir -eq 'd') { [MA3WingKB]::keybd_event($vk, 0, 0, [UIntPtr]::Zero); Write-Host "-> klawisz MA: $letter (wcisniety)" }
     else { [MA3WingKB]::keybd_event($vk, 0, 2, [UIntPtr]::Zero); Write-Host "-> klawisz MA: $letter (puszczony)" }
 }
+$script:curClient = $null
+function Send-KeysResult([string]$r) { if ($script:curClient) { Send-Client $script:curClient ("fb`tKEYS`t" + $r) } }
 function Send-MAKeys([string]$mode, [string]$text) {
     if ($mode -eq 't') {
         # tekst: znaki specjalne SendKeys trzeba ujac w nawiasy klamrowe
@@ -252,16 +263,11 @@ function Send-MAKeys([string]$mode, [string]$text) {
         $keys = $sb.ToString()
     } else { $keys = $text }
     try {
-        $p = $null
-        if ($script:maPid) { $p = Get-Process -Id $script:maPid -ErrorAction SilentlyContinue }
-        if (-not $p -or $p.MainWindowHandle -eq 0) {
-            $p = Get-Process -ErrorAction SilentlyContinue | Where-Object { ($_.ProcessName -like '*gma3*') -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-        }
-        if ($p) { $script:maPid = $p.Id; [Microsoft.VisualBasic.Interaction]::AppActivate($p.Id); Start-Sleep -Milliseconds 40 }
-        else { Write-Host "Nie widze okna onPC - nie moge wpisac: $text" -ForegroundColor Yellow; return }
+        if (-not (Focus-MA)) { Send-KeysResult 'skipped'; return }
         if ($ShortcutsOn) { $keys = '{F10}' + $keys + '{F10}' }
         [System.Windows.Forms.SendKeys]::SendWait($keys)
         Write-Host ("-> klawiatura onPC: {0}" -f $text)
+        Send-KeysResult 'ok'
     } catch { Write-Host "Blad wpisywania do onPC: $($_.Exception.Message)" -ForegroundColor Red }
 }
 
@@ -372,7 +378,7 @@ try {
                     $remove = $true
                 } else {
                     $c.Text += [Text.Encoding]::UTF8.GetString($c.Buf, 0, $r.Count)
-                    if ($r.EndOfMessage) { $t = $c.Text; $c.Text = ''; Invoke-Line $t }
+                    if ($r.EndOfMessage) { $t = $c.Text; $c.Text = ''; $script:curClient = $c; Invoke-Line $t; $script:curClient = $null }
                     $c.Task = $c.Ws.ReceiveAsync($c.Seg, $cancel)
                 }
             } catch { $remove = $true }
