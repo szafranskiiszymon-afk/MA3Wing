@@ -60,6 +60,7 @@ function connect(){
 function feedback(line){
   const p=line.split('\t');if(p[0]!=='fb')return;
   if(/^ATTR/.test(p[1]||'')){attrFeedback(p[1],p[2]||'');return;}
+  if(/^EXEC\d+$/.test(p[1]||'')){applyExec(+p[1].slice(4),p[2]||'');return;}
   if(touching>0)return;
   const m=/Page(\d+)\/Fader(\d+)$/.exec(p[1]||'');const v=parseFloat(p[2]);
   if(!m||isNaN(v)||+m[1]!==S.page)return;
@@ -96,13 +97,35 @@ function fader(parent,style,capW,capColor,get,set){
 }
 function knob(parent,n){
   const k=el('div','',parent,'<i></i>');k.className='knob';
-  const draw=()=>{k.style.background='conic-gradient(#ffc71a '+((S.kn[n]||0)*3.6)+'deg,#3a3a3f 0)';};
+  const draw=()=>{k.style.background='conic-gradient('+(k.col||'#ffc71a')+' '+((S.kn[n]||0)*3.6)+'deg,#3a3a3f 0)';};
   let st=null;
   k.addEventListener('pointerdown',e=>{e.preventDefault();try{k.setPointerCapture(e.pointerId)}catch(x){}st={y:e.clientY,v:S.kn[n]||0};});
   k.addEventListener('pointermove',e=>{if(!st)return;const nv=clamp(st.v+(st.y-e.clientY)/scale*0.6);const d=nv-(S.kn[n]||0);if(d===0)return;S.kn[n]=nv;draw();tx('/Page'+S.page+'/Encoder'+n,'i',d);});
   const end=()=>{st=null};k.addEventListener('pointerup',end);k.addEventListener('pointercancel',end);
   k.draw=draw;draw();return k;
 }
+// ===== executor names / colors from MA (plugin v5: EXECnnn=name|#rrggbb) =====
+const EX={};   // n -> {keys:[{b,num,mark}], track, knob}
+function exReg(n,part,el,mark){const e=EX[n]||(EX[n]={keys:[]});if(part==='key')e.keys.push({b:el,num:String(n),mark:mark||''});else e[part]=el;return el;}
+function shade(hex,f){const v=parseInt(hex.slice(1),16);const r=(v>>16)&255,g=(v>>8)&255,b=v&255;
+  return 'rgb('+Math.round(r*f)+','+Math.round(g*f)+','+Math.round(b*f)+')';}
+function lum(hex){const v=parseInt(hex.slice(1),16);return (0.299*((v>>16)&255)+0.587*((v>>8)&255)+0.114*(v&255))/255;}
+function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function applyExec(n,v){
+  const e=EX[n];if(!e)return;
+  const q=String(v).split('|');const name=(q[0]||'').trim();const col=/^#[0-9a-f]{6}$/i.test(q[1]||'')?q[1]:'';
+  e.keys.forEach(k=>{
+    const isX=k.mark.indexOf('X')===0;
+    if(!isX)k.b.innerHTML=(name?esc(name):k.num)+'<br><span class="sub">'+(name?k.num:k.mark)+'</span>';
+    if(col){k.b.style.background=shade(col,0.42);k.b.style.boxShadow='inset 0 3px 0 '+col+', 0 2px 0 #000';k.b.style.color=lum(col)>0.85?'#fff':'#fff';}
+    else{k.b.style.background='';k.b.style.boxShadow='';k.b.style.color='';}
+    if(!isX)k.b.style.fontSize=name&&name.length>6?'10px':'';
+  });
+  if(e.track){const fl=e.track.querySelector('.fill');const cp=e.track.querySelector('.cap i');
+    fl.style.background=col||'';cp.style.background=col||'';e.track.style.boxShadow=col?'inset 0 3px 0 '+col:'';}
+  if(e.knob){e.knob.col=col||'';e.knob.draw();}
+}
+
 // command line keypad logic
 function pad(kind,v){
   const c=S.cmd;
@@ -145,16 +168,17 @@ const ex=el('div','width:430px;flex:none;display:flex;gap:16px',body);
   block.forEach(i=>{
     const c=el('div','flex:1;min-width:0;display:flex;flex-direction:column;gap:5px',b);
     const fx=200+i;
-    const k4=knob(c,400+i);key(c,String(400+i),'height:40px',()=>keyMsg(400+i,1),()=>keyMsg(400+i,0),'≡');
+    const k4=exReg(400+i,'knob',knob(c,400+i));exReg(400+i,'key',key(c,String(400+i),'height:40px',()=>keyMsg(400+i,1),()=>keyMsg(400+i,0),'≡'),'≡');
     el('div','height:8px',c);
-    const k3=knob(c,300+i);key(c,String(300+i),'height:40px',()=>keyMsg(300+i,1),()=>keyMsg(300+i,0),'≡');
+    const k3=exReg(300+i,'knob',knob(c,300+i));exReg(300+i,'key',key(c,String(300+i),'height:40px',()=>keyMsg(300+i,1),()=>keyMsg(300+i,0),'≡'),'≡');
     el('div','height:18px',c);
     let val;
     const t=fader(c,'flex:1;min-height:150px',30,'#2e2e32',()=>S.f[fx]||0,v=>{S.f[fx]=v;val.textContent=v;tx('/Page'+S.page+'/Fader'+fx,'i',v);});
+    exReg(fx,'track',t);
     val=el('div','text-align:center;color:#ffc71a',c,String(S.f[fx]||0));val.className='mono';
     el('div','height:18px',c);
-    key(c,String(fx),'height:42px',()=>keyMsg(fx,1),()=>keyMsg(fx,0),'=');
-    key(c,String(100+i),'height:42px',()=>keyMsg(100+i,1),()=>keyMsg(100+i,0),'–');
+    exReg(fx,'key',key(c,String(fx),'height:42px',()=>keyMsg(fx,1),()=>keyMsg(fx,0),'='),'=');
+    exReg(100+i,'key',key(c,String(100+i),'height:42px',()=>keyMsg(100+i,1),()=>keyMsg(100+i,0),'–'),'–');
     redrawAll.push(()=>{t.draw();val.textContent=S.f[fx]||0;k4.draw();k3.draw();});
   });
 });
@@ -285,7 +309,7 @@ for(let h=0;h<2;h++){
   [xr1,xr2].forEach((r,ri)=>{
     const g=rowEl(r,GP,(h?'margin-left:10px':''));
     for(let j=0;j<4;j++){const idx=ri*8+h*4+j;const n=idx<8?291+idx:191+idx-8;
-      sized(key(g,'X'+(idx+1),'',()=>keyMsg(n,1),()=>keyMsg(n,0),xsub[idx]||String(n)),U,U,10);}
+      exReg(n,'key',sized(key(g,'X'+(idx+1),'',()=>keyMsg(n,1),()=>keyMsg(n,0),xsub[idx]||String(n)),U,U,10),'X');}
   });
 }
 el('div','height:6px',xb);
@@ -345,6 +369,7 @@ function fit(){
 window.addEventListener('resize',fit);window.addEventListener('orientationchange',()=>setTimeout(fit,200));
 document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+window.__fb=feedback;   // test hook
 fit();
 connect();
 })();

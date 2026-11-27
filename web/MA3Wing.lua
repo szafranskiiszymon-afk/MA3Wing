@@ -72,7 +72,61 @@ local function attrList()
     return list, tostring(sf) .. ':' .. #list
 end
 
-local function writeState(file, page, vals, attrs)
+-- nazwy i kolory (Appearance) obiektow pod executorami
+local EXECS = {}
+for _, base in ipairs({100, 200, 300, 400}) do for i = 1, COLUMNS do EXECS[#EXECS + 1] = base + i end end
+for i = 1, 8 do EXECS[#EXECS + 1] = 190 + i; EXECS[#EXECS + 1] = 290 + i end   -- Xkeys
+
+local dumped = false
+local function firstNum(h, names)
+    for _, n in ipairs(names) do
+        local v = tonumber(prop(h, n))
+        if v ~= nil then return v end
+    end
+    return nil
+end
+local function appearanceColor(obj)
+    local ap = prop(obj, 'appearance')
+    if ap == nil or type(ap) == 'string' or type(ap) == 'number' then return '' end
+    local r = firstNum(ap, {'backr', 'back_r', 'colorr', 'r'})
+    local g = firstNum(ap, {'backg', 'back_g', 'colorg', 'g'})
+    local b = firstNum(ap, {'backb', 'back_b', 'colorb', 'b'})
+    local a = firstNum(ap, {'backalpha', 'back_alpha', 'alpha', 'a'})
+    if r == nil or g == nil or b == nil then
+        if not dumped then
+            dumped = true
+            say('nie znam nazw kolorow Appearance - ponizej opis, przeslij zrzut:')
+            pcall(function() ap:Dump() end)
+        end
+        return ''
+    end
+    if a ~= nil and a <= 0 then return '' end
+    local m = math.max(r, g, b)
+    local k = (m <= 1) and 255 or 1       -- 0..1 albo 0..255
+    local function c(x) x = math.floor(x * k + 0.5); if x < 0 then x = 0 elseif x > 255 then x = 255 end; return x end
+    return string.format('#%02x%02x%02x', c(r), c(g), c(b))
+end
+local function clean(t) return (tostring(t or ''):gsub('[|=\r\n]', ' ')) end
+local function execInfo()
+    local out, sig = {}, {}
+    for _, n in ipairs(EXECS) do
+        local name, col = '', ''
+        local ok, ex = pcall(GetExecutor, n)
+        if ok and ex ~= nil then
+            local obj = prop(ex, 'object')
+            if obj ~= nil and type(obj) ~= 'string' then
+                name = clean(prop(obj, 'name'))
+                col = appearanceColor(obj)
+            end
+            if name == '' then name = clean(prop(ex, 'name')) end
+        end
+        out[n] = name .. '|' .. col
+        sig[#sig + 1] = out[n]
+    end
+    return out, table.concat(sig, ';')
+end
+
+local function writeState(file, page, vals, attrs, execs)
     local f, err = io.open(file, 'w')
     if not f then return false, err end
     for _, base in ipairs(ROWS) do
@@ -80,6 +134,9 @@ local function writeState(file, page, vals, attrs)
             local n = base + i
             f:write('/Page', page, '/Fader', n, '=', vals[n] or 0, '\n')
         end
+    end
+    for _, n in ipairs(EXECS) do
+        if execs and execs[n] then f:write('EXEC', n, '=', execs[n], '\n') end
     end
     attrs = attrs or {}
     f:write('ATTRN=', #attrs, '\n')
@@ -106,10 +163,11 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v4), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v5), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
+    local execs, lastExecSig = {}, nil
     while MA3WingToken == token do
         local page = pageNumber()
         local changed = (page ~= lastPage)
@@ -117,6 +175,10 @@ local function run()
         if tick % 3 == 1 then                       -- zaznaczenie sprawdzamy co ~0.3 s
             local l, sig = attrList()
             if sig ~= lastSig then attrs, lastSig, changed = l, sig, true end
+        end
+        if tick % 10 == 1 then                      -- nazwy i kolory co ~1 s
+            local e, esig = execInfo()
+            if esig ~= lastExecSig then execs, lastExecSig, changed = e, esig, true end
         end
         local vals = {}
         for _, base in ipairs(ROWS) do
@@ -128,7 +190,7 @@ local function run()
             end
         end
         if changed then
-            local ok, err = writeState(file, page, vals, attrs)
+            local ok, err = writeState(file, page, vals, attrs, execs)
             if ok then
                 last, lastPage = vals, page
             else
