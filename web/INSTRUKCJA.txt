@@ -41,3 +41,14 @@ Pliki (trzymaj je razem w jednym folderze):
      a podepnę enkodery w pulpicie.
 
 Zakończenie: zamknij okienko.
+
+6) POZYCJE FADERÓW Z MA NA iPADZIE (wtyczka MA3Wing.lua)
+   a) W onPC, w oknie OSC, linia do feedbacku: IP 127.0.0.1, Port 9000, Prefix gma3,
+      Send = Yes, Receive = No. Zapamiętaj jej NUMER (kolumna "No").
+   b) Otwórz MA3Wing.lua Notatnikiem i w linii  local OSC_LINE = 3  wpisz ten numer.
+   c) W onPC dodaj okno "Plugins" (Add Window -> Pools -> Plugins), edytuj pusty plugin,
+      nazwij go MA3Wing, dodaj komponent Lua (Insert New Component Lua), wejdź w jego
+      edycję i wklej całą zawartość MA3Wing.lua. Zapisz.
+   d) Kliknij plugin raz – w Command Line Feedback pojawi się "MA3 Wing sync: start".
+      Od tej chwili fadery na iPadzie pokazują pozycje z MA, także zaraz po otwarciu strony.
+   e) Ponowne kliknięcie pluginu wysyła wszystkie pozycje jeszcze raz.

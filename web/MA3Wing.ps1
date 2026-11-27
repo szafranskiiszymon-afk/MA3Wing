@@ -162,6 +162,7 @@ $clients = New-Object System.Collections.ArrayList
 $cancel = [Threading.CancellationToken]::None
 $lastFaderLog = [DateTime]::MinValue
 $lastFbLog = @{}
+$fbCache = [ordered]@{}   # ostatnie pozycje faderow z MA, dla nowo podlaczonych iPadow
 
 function Send-ToClients([string]$text) {
     $bytes = [Text.Encoding]::UTF8.GetBytes($text)
@@ -213,6 +214,13 @@ try {
                     $c.Task = $c.Ws.ReceiveAsync($seg, $cancel)
                     [void]$clients.Add($c)
                     Write-Host "Polaczono: $($c.Who)" -ForegroundColor Green
+                    foreach ($k in @($fbCache.Keys)) {
+                        try {
+                            $bytes = [Text.Encoding]::UTF8.GetBytes(("fb`t{0}`t{1}" -f $k, $fbCache[$k]))
+                            $c.Ws.SendAsync([ArraySegment[byte]]::new($bytes), [Net.WebSockets.WebSocketMessageType]::Text, $true, $cancel).Wait(500) | Out-Null
+                        } catch {}
+                    }
+                    if ($fbCache.Count -gt 0) { Write-Host "  wyslano iPadowi $($fbCache.Count) pozycji z MA" -ForegroundColor DarkGray }
                 } else {
                     $res = $ctx.Response
                     $path = $ctx.Request.Url.AbsolutePath
@@ -241,9 +249,10 @@ try {
                     $a = $m[0]; $v = $m[1]
                     $local = $a
                     if ($Prefix -and $local.StartsWith('/' + $Prefix + '/')) { $local = $local.Substring($Prefix.Length + 1) }
+                    if ($local -match '^/Page\d+/Fader\d+$') { $fbCache[$local] = $v }
                     Send-ToClients ("fb`t{0}`t{1}" -f $local, $v)
                     $now = [DateTime]::Now
-                    if (-not $lastFbLog.ContainsKey($a) -or ($now - $lastFbLog[$a]).TotalMilliseconds -gt 1000) {
+                    if (($local -notmatch '^/\d+\.') -and (-not $lastFbLog.ContainsKey($a) -or ($now - $lastFbLog[$a]).TotalMilliseconds -gt 1000)) {
                         $lastFbLog[$a] = $now
                         Write-Host ("<- {0} {1}" -f $a, $v) -ForegroundColor DarkCyan
                     }
