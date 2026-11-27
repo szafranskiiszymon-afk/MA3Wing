@@ -127,7 +127,7 @@ local function execInfo()
 end
 
 -- zawartosc pul: grupy i presety (numer -> nazwa|kolor) + lista istniejacych numerow
-local PRESET_POOLS = {1, 2, 3, 4, 5, 6, 7, 8, 9}
+local PRESET_POOLS = {2, 6}          -- 2 = Position, 6 = Focus
 local POOL_MAX = 500
 local function poolScan()
     local out, keys = {}, {}
@@ -209,7 +209,7 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v7), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v8), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0

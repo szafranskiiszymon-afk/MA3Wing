@@ -222,7 +222,9 @@ const ex=el('div','width:430px;flex:none;display:flex;gap:16px;overflow:hidden',
 // ===== master section (Prev/Next cluster + 1: two faders, Pause / Go- / Go+)
 const ms=el('div','width:104px;flex:none;display:flex;flex-direction:column;gap:6px',body);
 const mg=el('div','display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px',ms);
-[['Prev','Previous'],['Next','Next'],['Set','Set'],['Up','Up'],['SelFix','SelFix'],['Down','Down']].forEach(a=>key(mg,a[0],'height:36px',()=>cmdSend(a[1])));
+[['Prev','Previous'],['Next','Next'],['Set','Set'],['Up','Up'],['SelFix','SelFix'],['Down','Down']].forEach(a=>{
+  if(a[0]==='Set')key(mg,'Set','height:36px',()=>pad('kw','Set'));      // Set goes into the command line like on the console
+  else key(mg,a[0],'height:36px',()=>cmdSend(a[1]));});
 el('div','height:18px',ms);
 const mf=el('div','flex:1;display:flex;gap:8px;min-height:0',ms);
 function masterFader(name,getK,cmd,capColor){
@@ -360,7 +362,7 @@ sized(key(cX,'Xkeys','',()=>osc('Xkeys (przełącza funkcje Xkeys)')),U+4,U,11);
 sized(key(cX,'List','',()=>cmdSend('List')),U+4,U,11);
 const cM=colEl(upB,6,'margin-left:4px');
 const lw=el('div','height:13px',cM);led(lw);
-sized(key(cM,'Menu','',()=>cmdSend('Menu "MainMenu"')),U+4,U,11);
+sized(key(cM,'Menu','',()=>cmdSend('Menu "MenuSelector"')),U+4,U,11);
 
 // lower block
 const loB=rowEl(cs,12,'align-items:flex-start;margin-top:6px');
@@ -393,9 +395,9 @@ const lend=()=>{lst=null};lwW.addEventListener('pointerup',lend);lwW.addEventLis
 
 // ===== Groups / Presets pools (plugin v7: GRPn, GRPLIST, PREt.n, PREt.LIST) =====
 const POOLS={GRP:{items:{},list:null}};
-const PTYPES=[[1,'Dimmer'],[2,'Position'],[3,'Gobo'],[4,'Color'],[5,'Beam'],[6,'Focus'],[7,'Control'],[8,'Shapers'],[9,'Video']];
+const PTYPES=[[2,'Position'],[6,'Focus']];
 PTYPES.forEach(t=>{POOLS['PRE'+t[0]+'.']={items:{},list:null};});
-let curTab='Wing',presetType=4,poolPage=0,poolTimer=null;
+let curTab='Wing',presetType=2,poolPage=0,poolTimer=null;
 const PER_PAGE=48;   // 6 x 8
 function poolFeedback(k,v){
   let m=/^(GRP|PRE\d+\.)(LIST|\d+)$/.exec(k);if(!m)return;
@@ -413,7 +415,7 @@ const poolPgLab=el('div','width:44px;text-align:center;color:#a1a1a6;flex:none',
 key(poolHead,'▶','height:34px;width:40px;flex:none',()=>{poolPage++;renderPool();});
 const poolGrid=el('div','flex:1;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));gap:5px',poolView);
 const typeBtns={};
-PTYPES.forEach(t=>{typeBtns[t[0]]=key(poolTypes,t[1],'height:34px;flex:1;min-width:0;font-size:10px;padding:0',()=>{presetType=t[0];poolPage=0;renderPool();});});
+PTYPES.forEach(t=>{typeBtns[t[0]]=key(poolTypes,t[1],'height:34px;width:110px;flex:none;font-size:13px;padding:0',()=>{presetType=t[0];poolPage=0;renderPool();});});
 const cells=[];
 for(let i=0;i<PER_PAGE;i++){
   const b=key(poolGrid,'','height:auto;min-height:0;font-size:12px;white-space:normal;line-height:1.2',()=>poolTap(i));
