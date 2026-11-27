@@ -182,16 +182,39 @@ const cs=el('div','flex:1;min-width:0;display:flex;flex-direction:column;gap:14p
 
 // 2: dual encoders with encoder keys
 const er=el('div','display:flex;justify-content:space-between;padding:0 4px;height:104px',cs);
+// Dual encoders: each turns one attribute of the selected fixtures (like the console),
+// via command "Attribute "<name>" At + <n>". Tap the label to change the attribute,
+// the small key toggles fine mode (x0.1).
+const ENC_DEFAULT=['Dimmer','Pan','Tilt','Zoom','Focus1'];
+let encAttr=ENC_DEFAULT.slice();
+try{const sv=JSON.parse(localStorage.getItem('ma3wing.enc')||'null');if(Array.isArray(sv)&&sv.length===5)encAttr=sv;}catch(e){}
+const encFine=[false,false,false,false,false],encAcc=[0,0,0,0,0];
+function encFlush(){
+  for(let i=0;i<5;i++){
+    if(encAcc[i]===0)continue;
+    const steps=encAcc[i];encAcc[i]=0;
+    const amt=encFine[i]?Math.round(Math.abs(steps))/10:Math.abs(steps);
+    cmdSend('Attribute "'+encAttr[i]+'" At '+(steps>0?'+ ':'- ')+amt);
+  }
+}
+setInterval(encFlush,80);
 for(let i=0;i<5;i++){
   const wrap=el('div','position:relative;width:92px;height:104px',er);
   const e=el('div','width:92px;height:92px',wrap,'<div class="in"><b></b></div>');e.className='enc';
-  key(wrap,'','position:absolute;left:-4px;bottom:0;width:22px;height:22px;border-radius:50%;padding:0',()=>osc('Klawisz enkodera '+(i+1)+' (adres OSC do ustalenia)'));
+  const lab=el('div','position:absolute;left:18px;right:0;bottom:0;text-align:center;font:600 11px -apple-system,sans-serif;color:#ffc71a;white-space:nowrap;overflow:hidden;touch-action:none',wrap,encAttr[i]);
+  lab.addEventListener('pointerup',ev=>{ev.preventDefault();
+    const v=window.prompt('Atrybut dla enkodera '+(i+1)+' (np. Dimmer, Pan, Tilt, Zoom, Focus1, ColorRGB_R):',encAttr[i]);
+    if(v&&v.trim()){encAttr[i]=v.trim();lab.textContent=encAttr[i];try{localStorage.setItem('ma3wing.enc',JSON.stringify(encAttr))}catch(e){}}
+  });
+  const fk=key(wrap,'','position:absolute;left:-4px;bottom:0;width:22px;height:22px;border-radius:50%;padding:0',()=>{
+    encFine[i]=!encFine[i];fk.style.background=encFine[i]?'#ffc71a':'#2b2b2f';
+    osc('Enkoder '+(i+1)+': '+(encFine[i]?'tryb dokładny (x0.1)':'tryb normalny'));
+  });
   let st=null;
   e.addEventListener('pointerdown',ev=>{ev.preventDefault();try{e.setPointerCapture(ev.pointerId)}catch(x){}st={y:ev.clientY,v:S.enc[i],last:S.enc[i]};});
-  e.addEventListener('pointermove',ev=>{if(!st)return;const nv=Math.round(st.v+(st.y-ev.clientY)/scale*3);const step=Math.round((nv-st.last)/3);if(step===0)return;st.last=nv;S.enc[i]=nv;e.style.transform='rotate('+nv+'deg)';osc('Enkoder '+(i+1)+' '+(step>0?'+':'')+step+' (adres OSC do ustalenia)');});
-  const end=()=>{st=null};e.addEventListener('pointerup',end);e.addEventListener('pointercancel',end);
+  e.addEventListener('pointermove',ev=>{if(!st)return;const nv=Math.round(st.v+(st.y-ev.clientY)/scale*3);const step=Math.round((nv-st.last)/3);if(step===0)return;st.last+=step*3;S.enc[i]=nv;e.style.transform='rotate('+nv+'deg)';encAcc[i]+=step;});
+  const end=()=>{st=null;encFlush();};e.addEventListener('pointerup',end);e.addEventListener('pointercancel',end);
 }
-
 const sized=(b,w,h,fs)=>{b.style.width=w+'px';b.style.height=h+'px';b.style.flex='none';if(fs)b.style.fontSize=fs+'px';return b;};
 const colEl=(p,gap,extra)=>el('div','display:flex;flex-direction:column;gap:'+(gap==null?GP:gap)+'px;'+(extra||''),p);
 const rowEl=(p,gap,extra)=>el('div','display:flex;gap:'+(gap==null?GP:gap)+'px;'+(extra||''),p);
