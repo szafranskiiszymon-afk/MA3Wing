@@ -97,7 +97,7 @@ function knob(parent,n){
   const draw=()=>{k.style.background='conic-gradient(#ffc71a '+((S.kn[n]||0)*3.6)+'deg,#3a3a3f 0)';};
   let st=null;
   k.addEventListener('pointerdown',e=>{e.preventDefault();try{k.setPointerCapture(e.pointerId)}catch(x){}st={y:e.clientY,v:S.kn[n]||0};});
-  k.addEventListener('pointermove',e=>{if(!st)return;const nv=clamp(st.v+(st.y-e.clientY)/scale*0.6);if(nv===(S.kn[n]||0))return;S.kn[n]=nv;draw();tx('/Page'+S.page+'/Fader'+n,'i',nv);});
+  k.addEventListener('pointermove',e=>{if(!st)return;const nv=clamp(st.v+(st.y-e.clientY)/scale*0.6);const d=nv-(S.kn[n]||0);if(d===0)return;S.kn[n]=nv;draw();tx('/Page'+S.page+'/Encoder'+n,'i',d);});
   const end=()=>{st=null};k.addEventListener('pointerup',end);k.addEventListener('pointercancel',end);
   k.draw=draw;draw();return k;
 }
