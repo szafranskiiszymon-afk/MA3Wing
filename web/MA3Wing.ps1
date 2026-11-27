@@ -163,6 +163,34 @@ $cancel = [Threading.CancellationToken]::None
 $lastFaderLog = [DateTime]::MinValue
 $lastFbLog = @{}
 $fbCache = [ordered]@{}   # ostatnie pozycje faderow z MA, dla nowo podlaczonych iPadow
+$StateFile = Join-Path $env:TEMP 'MA3Wing-faders.txt'   # zapisuje go wtyczka MA3Wing.lua w onPC
+$stateStamp = [DateTime]::MinValue
+$stateSeen = $false
+$lastStateLog = [DateTime]::MinValue
+function Read-StateFile {
+    if (-not [IO.File]::Exists($script:StateFile)) { return }
+    $t = [IO.File]::GetLastWriteTimeUtc($script:StateFile)
+    if ($t -eq $script:stateStamp) { return }
+    try { $lines = [IO.File]::ReadAllLines($script:StateFile) } catch { return }
+    if ($lines.Count -eq 0 -or $lines[-1] -ne 'END') { return }   # plik w trakcie zapisu - sprobuj za chwile
+    $script:stateStamp = $t
+    if (-not $script:stateSeen) { $script:stateSeen = $true; Write-Host "<- wtyczka MA3Wing w onPC dziala (plik $($script:StateFile))" -ForegroundColor Green }
+    $n = 0
+    foreach ($l in $lines) {
+        $kv = $l.Split('=')
+        if ($kv.Count -ne 2) { continue }
+        if ($script:fbCache[$kv[0]] -ne $kv[1]) {
+            $script:fbCache[$kv[0]] = $kv[1]
+            Send-ToClients ("fb`t{0}`t{1}" -f $kv[0], $kv[1])
+            $n++
+        }
+    }
+    $now = [DateTime]::Now
+    if ($n -gt 0 -and ($now - $script:lastStateLog).TotalMilliseconds -gt 1000) {
+        $script:lastStateLog = $now
+        Write-Host "<- MA: zmiana $n pozycji (np. $($lines[0]))" -ForegroundColor DarkCyan
+    }
+}
 
 function Send-ToClients([string]$text) {
     $bytes = [Text.Encoding]::UTF8.GetBytes($text)
@@ -199,7 +227,8 @@ try {
         foreach ($c in $clients) { $tasks.Add($c.Task) }
         $offset = 1 + $udpIns.Count
 
-        $idx = [System.Threading.Tasks.Task]::WaitAny($tasks.ToArray(), 500)
+        Read-StateFile
+        $idx = [System.Threading.Tasks.Task]::WaitAny($tasks.ToArray(), 100)
         if ($idx -lt 0) { continue }
 
         if ($idx -eq 0) {

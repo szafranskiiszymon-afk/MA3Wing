@@ -1,16 +1,12 @@
--- MA3 Wing sync: wysyla pozycje faderow (2xx) i galek (3xx, 4xx) z aktualnej strony
--- przez OSC do mostu MA3 Wing na laptopie. Uruchom raz (klik na plugin w puli).
--- Ponowne klikniecie = wyslij wszystko jeszcze raz.
+-- MA3 Wing sync: zapisuje pozycje faderow (2xx) i galek (3xx, 4xx) z aktualnej strony
+-- do pliku tymczasowego, ktory czyta most MA3 Wing na tym samym laptopie.
+-- Uruchom raz (klik na plugin w puli). Ponowne klikniecie = zapisz wszystko jeszcze raz.
 
-local OSC_LINE = 3        -- NUMER linii OSC w In & Out > OSC, ktora ma Send = Yes (port 9000)
-local COLUMNS  = 15       -- ile kolumn executorow sprawdzac (x01..x15)
-local PERIOD   = 0.1      -- co ile sekund sprawdzac zmiany
+local COLUMNS = 15        -- ile kolumn executorow sprawdzac (x01..x15)
+local PERIOD  = 0.1       -- co ile sekund sprawdzac zmiany
 
 local ROWS = {200, 300, 400}
-
-local function send(addr, v)
-    Cmd(string.format('SendOSC %d "%s,i,%d"', OSC_LINE, addr, v))
-end
+local FILE = (os.getenv('TEMP') or os.getenv('TMP') or 'C:\\Windows\\Temp') .. '\\MA3Wing-faders.txt'
 
 local function faderValue(n)
     local ok, ex = pcall(GetExecutor, n)
@@ -29,30 +25,49 @@ local function pageNumber()
     return 1
 end
 
+local function writeState(page, vals)
+    local f = io.open(FILE, 'w')
+    if not f then return false end
+    for _, base in ipairs(ROWS) do
+        for i = 1, COLUMNS do
+            local n = base + i
+            f:write('/Page', page, '/Fader', n, '=', vals[n] or 0, '\n')
+        end
+    end
+    f:write('END\n')
+    f:close()
+    return true
+end
+
 return function()
     if MA3WingSyncRunning then
         MA3WingForceResend = true
-        Printf('MA3 Wing sync: wysylam wszystko ponownie')
+        Printf('MA3 Wing sync: zapisuje wszystko ponownie')
         return
     end
     MA3WingSyncRunning = true
-    MA3WingForceResend = false
-    Printf('MA3 Wing sync: start (linia OSC ' .. OSC_LINE .. ')')
+    MA3WingForceResend = true
+    Printf('MA3 Wing sync: start, plik: ' .. FILE)
 
     local last, lastPage = {}, nil
     while MA3WingSyncRunning do
         local page = pageNumber()
-        if page ~= lastPage or MA3WingForceResend then
-            last, lastPage, MA3WingForceResend = {}, page, false
-        end
+        local changed = (page ~= lastPage) or MA3WingForceResend
+        local vals = {}
         for _, base in ipairs(ROWS) do
             for i = 1, COLUMNS do
                 local n = base + i
                 local v = math.floor(faderValue(n) + 0.5)
-                if last[n] ~= v then
-                    last[n] = v
-                    send('/Page' .. page .. '/Fader' .. n, v)
-                end
+                vals[n] = v
+                if last[n] ~= v then changed = true end
+            end
+        end
+        if changed then
+            if writeState(page, vals) then
+                last, lastPage, MA3WingForceResend = vals, page, false
+            else
+                Printf('MA3 Wing sync: nie moge zapisac pliku ' .. FILE)
+                coroutine.yield(2)
             end
         end
         coroutine.yield(PERIOD)
