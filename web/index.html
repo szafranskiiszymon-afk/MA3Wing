@@ -430,7 +430,7 @@ function poolTap(i){
   if(S.cmd.trim()){                       // e.g. "Store " waiting -> "Store Group 7" + Enter
     const c=S.cmd;typeText((/ $/.test(c)?'':' ')+obj);typeKey('{ENTER}');
     osc('MA linia komend ← '+c.trim()+' '+obj);S.cmd='';showCmd();
-  } else cmdSend(obj);
+  } else cmdSend(curTab==='Groups'?obj:'At '+obj);   // presets: apply to the current selection
 }
 function renderPool(){
   if(curTab==='Wing')return;
