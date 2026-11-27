@@ -58,7 +58,9 @@ function connect(){
 }
 // feedback from onPC: "fb<TAB>/gma3/Page1/Fader201<TAB>65"
 function feedback(line){
-  const p=line.split('\t');if(p[0]!=='fb'||touching>0)return;
+  const p=line.split('\t');if(p[0]!=='fb')return;
+  if(/^ATTR/.test(p[1]||'')){attrFeedback(p[1],p[2]||'');return;}
+  if(touching>0)return;
   const m=/Page(\d+)\/Fader(\d+)$/.exec(p[1]||'');const v=parseFloat(p[2]);
   if(!m||isNaN(v)||+m[1]!==S.page)return;
   const n=+m[2],val=clamp(v);
@@ -182,30 +184,75 @@ const cs=el('div','flex:1;min-width:0;display:flex;flex-direction:column;gap:14p
 
 // 2: dual encoders with encoder keys
 const er=el('div','display:flex;justify-content:space-between;padding:0 4px;height:104px',cs);
-// Dual encoders: each turns one attribute of the selected fixtures (like the console),
-// via command "Attribute "<name>" At + <n>". Tap the label to change the attribute,
-// the small key toggles fine mode (x0.1).
-const ENC_DEFAULT=['Dimmer','Pan','Tilt','Zoom','Focus1'];
-let encAttr=ENC_DEFAULT.slice();
-try{const sv=JSON.parse(localStorage.getItem('ma3wing.enc')||'null');if(Array.isArray(sv)&&sv.length===5)encAttr=sv;}catch(e){}
-const encFine=[false,false,false,false,false],encAcc=[0,0,0,0,0];
+// ===== Dual encoders, like on the console =====
+// Feature group bar above the encoders: pressing a group puts its attributes on the 5 encoders
+// (pages of 5 with the arrows). Attributes come from the selected fixture in MA (plugin v4);
+// without that data a default MA-like set is used. Turning sends: Attribute "<name>" At + <n>.
+const FG_ORDER=['Dimmer','Position','Gobo','Color','Beam','Focus','Control','Shapers','Video'];
+const FG_DEFAULT={Dimmer:['Dimmer'],Position:['Pan','Tilt'],Gobo:['Gobo1','Gobo1Pos','Gobo2','Gobo2Pos','Prism1'],
+  Color:['ColorRGB_R','ColorRGB_G','ColorRGB_B','Color1','CTO'],Beam:['Shutter1','Iris','Frost1','Prism1','Effects1'],
+  Focus:['Zoom','Focus1','Focus2'],Control:['Control1'],Shapers:['Blade1A','Blade1B','Blade2A','Blade2B','ShaperRot'],Video:[]};
+function guessGroup(n){
+  if(/^Dim/i.test(n))return 'Dimmer';if(/^(Pan|Tilt|Position)/i.test(n))return 'Position';
+  if(/^(Gobo|Animation)/i.test(n))return 'Gobo';if(/^(Color|CTO|CTC|CTB|Hue|Sat|Tint)/i.test(n))return 'Color';
+  if(/^(Blade|Shaper)/i.test(n))return 'Shapers';if(/^(Zoom|Focus)/i.test(n))return 'Focus';
+  if(/^(Shutter|Strobe|Iris|Prism|Frost|Effect|Beam)/i.test(n))return 'Beam';if(/^(Video|Media)/i.test(n))return 'Video';
+  return 'Control';
+}
+let maAttrs=[],maAttrN=-1;            // [{g,name,pretty}] from MA
+let curGroup='Dimmer',encPage=0;
+const encFine=[false,false,false,false,false],encAcc=[0,0,0,0,0],encSlot=[null,null,null,null,null];
+let encLabs=[],fgBtns={},fgBar,pgLab;
+function groupAttrs(g){
+  if(maAttrs.length){return maAttrs.filter(a=>a.g===g).map(a=>({name:a.name,pretty:a.pretty}));}
+  return (FG_DEFAULT[g]||[]).map(n=>({name:n,pretty:n}));
+}
+function groupsAvailable(){
+  if(!maAttrs.length)return FG_ORDER.filter(g=>(FG_DEFAULT[g]||[]).length);
+  const set=[];maAttrs.forEach(a=>{if(set.indexOf(a.g)<0)set.push(a.g);});
+  return FG_ORDER.filter(g=>set.indexOf(g)>=0).concat(set.filter(g=>FG_ORDER.indexOf(g)<0));
+}
+function renderEncoders(){
+  const list=groupAttrs(curGroup),pages=Math.max(1,Math.ceil(list.length/5));
+  if(encPage>=pages)encPage=pages-1;
+  for(let i=0;i<5;i++){encSlot[i]=list[encPage*5+i]||null;if(encLabs[i])encLabs[i].textContent=encSlot[i]?encSlot[i].pretty:'—';}
+  Object.keys(fgBtns).forEach(g=>{const b=fgBtns[g];const on=g===curGroup;b.style.background=on?'#ffc71a':'#2b2b2f';b.style.color=on?'#1a1400':'#e5e5ea';});
+  if(pgLab)pgLab.textContent=(encPage+1)+'/'+pages;
+}
+function renderGroupBar(){
+  if(!fgBar)return;fgBar.innerHTML='';fgBtns={};
+  const gs=groupsAvailable();if(gs.indexOf(curGroup)<0)curGroup=gs[0]||'Dimmer';
+  gs.forEach(g=>{fgBtns[g]=key(fgBar,g,'height:30px;flex:1;min-width:0;font-size:11px',()=>{
+    curGroup=g;encPage=0;renderEncoders();cmdSend('FeatureGroup "'+g+'"');});});
+  renderEncoders();
+}
+let attrTimer=null;
+function attrFeedback(k,v){
+  if(k==='ATTRN'){maAttrN=parseInt(v,10)||0;maAttrs.length=Math.min(maAttrs.length,maAttrN);}
+  else{const i=parseInt(k.slice(4),10)-1;if(i>=0){const q=v.split('|');const name=q[1]||'';
+    maAttrs[i]={g:q[0]||guessGroup(name),name:name,pretty:q[2]||name};}}
+  clearTimeout(attrTimer);attrTimer=setTimeout(()=>{maAttrs=maAttrs.filter(Boolean).slice(0,Math.max(0,maAttrN));renderGroupBar();},60);
+}
 function encFlush(){
   for(let i=0;i<5;i++){
     if(encAcc[i]===0)continue;
-    const steps=encAcc[i];encAcc[i]=0;
+    const steps=encAcc[i];encAcc[i]=0;const a=encSlot[i];if(!a)continue;
     const amt=encFine[i]?Math.round(Math.abs(steps))/10:Math.abs(steps);
-    cmdSend('Attribute "'+encAttr[i]+'" At '+(steps>0?'+ ':'- ')+amt);
+    cmdSend('Attribute "'+a.name+'" At '+(steps>0?'+ ':'- ')+amt);
   }
 }
 setInterval(encFlush,80);
+// group bar + page arrows (above the encoders)
+const fgRow=el('div','display:flex;gap:4px;align-items:center;height:30px',cs);
+cs.insertBefore(fgRow,er);
+fgBar=el('div','display:flex;gap:4px;flex:1;min-width:0',fgRow);
+key(fgRow,'◀','height:30px;width:34px;flex:none',()=>{if(encPage>0){encPage--;renderEncoders();}});
+pgLab=el('div','width:34px;text-align:center;color:#a1a1a6;flex:none',fgRow,'1/1');pgLab.className='mono';
+key(fgRow,'▶','height:30px;width:34px;flex:none',()=>{const n=Math.ceil(groupAttrs(curGroup).length/5);if(encPage<n-1){encPage++;renderEncoders();}});
 for(let i=0;i<5;i++){
   const wrap=el('div','position:relative;width:92px;height:104px',er);
   const e=el('div','width:92px;height:92px',wrap,'<div class="in"><b></b></div>');e.className='enc';
-  const lab=el('div','position:absolute;left:18px;right:0;bottom:0;text-align:center;font:600 11px -apple-system,sans-serif;color:#ffc71a;white-space:nowrap;overflow:hidden;touch-action:none',wrap,encAttr[i]);
-  lab.addEventListener('pointerup',ev=>{ev.preventDefault();
-    const v=window.prompt('Atrybut dla enkodera '+(i+1)+' (np. Dimmer, Pan, Tilt, Zoom, Focus1, ColorRGB_R):',encAttr[i]);
-    if(v&&v.trim()){encAttr[i]=v.trim();lab.textContent=encAttr[i];try{localStorage.setItem('ma3wing.enc',JSON.stringify(encAttr))}catch(e){}}
-  });
+  encLabs[i]=el('div','position:absolute;left:18px;right:0;bottom:0;text-align:center;font:600 11px -apple-system,sans-serif;color:#ffc71a;white-space:nowrap;overflow:hidden',wrap,'—');
   const fk=key(wrap,'','position:absolute;left:-4px;bottom:0;width:22px;height:22px;border-radius:50%;padding:0',()=>{
     encFine[i]=!encFine[i];fk.style.background=encFine[i]?'#ffc71a':'#2b2b2f';
     osc('Enkoder '+(i+1)+': '+(encFine[i]?'tryb dokładny (x0.1)':'tryb normalny'));
@@ -215,6 +262,7 @@ for(let i=0;i<5;i++){
   e.addEventListener('pointermove',ev=>{if(!st)return;const nv=Math.round(st.v+(st.y-ev.clientY)/scale*3);const step=Math.round((nv-st.last)/3);if(step===0)return;st.last+=step*3;S.enc[i]=nv;e.style.transform='rotate('+nv+'deg)';encAcc[i]+=step;});
   const end=()=>{st=null;encFlush();};e.addEventListener('pointerup',end);e.addEventListener('pointercancel',end);
 }
+renderGroupBar();
 const sized=(b,w,h,fs)=>{b.style.width=w+'px';b.style.height=h+'px';b.style.flex='none';if(fs)b.style.fontSize=fs+'px';return b;};
 const colEl=(p,gap,extra)=>el('div','display:flex;flex-direction:column;gap:'+(gap==null?GP:gap)+'px;'+(extra||''),p);
 const rowEl=(p,gap,extra)=>el('div','display:flex;gap:'+(gap==null?GP:gap)+'px;'+(extra||''),p);

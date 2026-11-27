@@ -31,7 +31,48 @@ local function pageNumber()
     return 1
 end
 
-local function writeState(file, page, vals)
+-- bezpieczny odczyt wlasciwosci obiektu MA (rozne wersje: h.name / h.Name / h:Get('Name'))
+local function prop(h, k)
+    if h == nil then return nil end
+    local K = k:sub(1,1):upper() .. k:sub(2)
+    for _, key in ipairs({k, K}) do
+        local ok, v = pcall(function() return h[key] end)
+        if ok and v ~= nil and v ~= '' then return v end
+    end
+    local ok, v = pcall(function() return h:Get(K) end)
+    if ok and v ~= nil and v ~= '' then return v end
+    return nil
+end
+
+-- atrybuty pierwszego zaznaczonego urzadzenia: { {grupa, nazwa, ladna nazwa}, ... }
+local function attrList()
+    local list = {}
+    local ok, sf = pcall(SelectionFirst)
+    if not ok or sf == nil then return list, 'none' end
+    local ok2, chans = pcall(GetUIChannels, sf)
+    if not ok2 or type(chans) ~= 'table' then return list, 'none' end
+    local seen = {}
+    for _, ui in ipairs(chans) do
+        local ok3, a = pcall(GetAttributeByUIChannel, ui)
+        if ok3 and a ~= nil then
+            local name = tostring(prop(a, 'name') or '')
+            if name ~= '' and not seen[name] then
+                seen[name] = true
+                local pretty = tostring(prop(a, 'pretty') or name)
+                local grp = ''
+                local feat = prop(a, 'feature')
+                if type(feat) ~= 'string' and feat ~= nil then
+                    local okp, par = pcall(function() return feat:Parent() end)
+                    if okp and par ~= nil then grp = tostring(prop(par, 'name') or '') end
+                end
+                list[#list + 1] = { grp, name, pretty }
+            end
+        end
+    end
+    return list, tostring(sf) .. ':' .. #list
+end
+
+local function writeState(file, page, vals, attrs)
     local f, err = io.open(file, 'w')
     if not f then return false, err end
     for _, base in ipairs(ROWS) do
@@ -39,6 +80,11 @@ local function writeState(file, page, vals)
             local n = base + i
             f:write('/Page', page, '/Fader', n, '=', vals[n] or 0, '\n')
         end
+    end
+    attrs = attrs or {}
+    f:write('ATTRN=', #attrs, '\n')
+    for i, a in ipairs(attrs) do
+        f:write('ATTR', i, '=', a[1], '|', a[2], '|', a[3], '\n')
     end
     f:write('END\n')
     f:close()
@@ -60,12 +106,18 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v3), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v4), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
-    local last, lastPage = {}, nil
+    local last, lastPage, lastSig, attrs = {}, nil, nil, {}
+    local tick = 0
     while MA3WingToken == token do
         local page = pageNumber()
         local changed = (page ~= lastPage)
+        tick = tick + 1
+        if tick % 3 == 1 then                       -- zaznaczenie sprawdzamy co ~0.3 s
+            local l, sig = attrList()
+            if sig ~= lastSig then attrs, lastSig, changed = l, sig, true end
+        end
         local vals = {}
         for _, base in ipairs(ROWS) do
             for i = 1, COLUMNS do
@@ -76,7 +128,7 @@ local function run()
             end
         end
         if changed then
-            local ok, err = writeState(file, page, vals)
+            local ok, err = writeState(file, page, vals, attrs)
             if ok then
                 last, lastPage = vals, page
             else
