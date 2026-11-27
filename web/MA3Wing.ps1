@@ -69,9 +69,20 @@ function Read-Osc([byte[]]$d) {
 $udp = New-Object System.Net.Sockets.UdpClient
 $udpIn = $null
 $FeedbackPort = 0
+# onPC sam zajmuje port linii Send (0.0.0.0:port). Bindujemy sie konkretnie na 127.0.0.1:port -
+# Windows przekazuje wtedy pakiety wyslane na 127.0.0.1 do bardziej konkretnego gniazda (naszego).
+function New-FeedbackSocket([int]$port) {
+    $s = New-Object System.Net.Sockets.UdpClient
+    try {
+        $s.ExclusiveAddressUse = $false
+        $s.Client.SetSocketOption([Net.Sockets.SocketOptionLevel]::Socket, [Net.Sockets.SocketOptionName]::ReuseAddress, $true)
+        $s.Client.Bind((New-Object Net.IPEndPoint([Net.IPAddress]::Loopback, $port)))
+        return $s
+    } catch { try { $s.Close() } catch {}; throw }
+}
 foreach ($fp in $FeedbackPorts) {
-    try { $udpIn = New-Object System.Net.Sockets.UdpClient($fp); $FeedbackPort = $fp; break }
-    catch { Write-Host "Port feedbacku $fp zajety, probuje nastepny..." -ForegroundColor DarkGray }
+    try { $udpIn = New-FeedbackSocket $fp; $FeedbackPort = $fp; break }
+    catch { Write-Host "Port feedbacku $fp niedostepny ($($_.Exception.InnerException.Message)), probuje nastepny..." -ForegroundColor DarkGray }
 }
 $listener = $null
 $HttpPort = 0
