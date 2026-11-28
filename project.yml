@@ -24,7 +24,7 @@ targets:
     info:
       path: Support/Info.plist
       properties:
-        CFBundleDisplayName: MA3 Wing
+        CFBundleDisplayName: SLT Wing
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UIStatusBarHidden: true
