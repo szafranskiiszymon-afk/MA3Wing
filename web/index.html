@@ -671,36 +671,48 @@ function applyToType(t,attr,dmx){
   cmdSend('ClearSelection ; Fixture '+fixList(t.fids)+' ; '+cmd+' ; ClearSelection ; Fixture '+fixList(all));
   layInternal=false;
 }
-// Your gobo presets (pool 3) with the gobo picture and fixture type read from the preset (plugin v22: PINF3.n=type|fid|attr|img|channelset)
+// Your gobo presets (pool 3) with picture + fixture type from the preset (plugin v22+: PINF3.n=type|fid|attr|img|channelset)
+let goboKind='all';
+function goboKindOf(n){const a=(PINF[n]||[])[2]||'';const m=/^Gobo(\d)$/i.exec(a);
+  if(m)return 'G'+m[1];if(/pos|rot|spin|index/i.test(a))return 'ROT';return 'OTHER';}
+const GOBO_KINDS=[['G1','Gobo 1'],['G2','Gobo 2'],['G3','Gobo 3'],['ROT','Obrót'],['OTHER','Inne']];
+function shortType(t){return String(t).replace(/^(MAC|Mac|Robin|Robe|Martin|Clay Paky|GLP|Ayrton)\s+/,'');}
 function renderGobo(){
   goboArea.innerHTML='';
   const P=POOLS['PRE3.'],all=(P.list||Object.keys(P.items).map(Number)).slice().sort((x,y)=>x-y);
   const selTypes=GT.types.filter(Boolean).map(t=>t.name);
-  const known=[...new Set(all.map(n=>(PINF[n]||[])[0]).filter(Boolean))];
+  const known=[...new Set(all.map(n=>(PINF[n]||[])[0]).filter(Boolean))].sort();
   if(goboFilter==='sel'&&!selTypes.length)goboFilter='all';
   if(goboFilter!=='sel'&&goboFilter!=='all'&&known.indexOf(goboFilter)<0)goboFilter=selTypes.length?'sel':'all';
-  const hr=el('div','display:flex;gap:4px;flex:none;flex-wrap:wrap',goboArea);
-  const chip=(id,label,sub)=>{const on=goboFilter===id;key(hr,esc(label)+(sub?'<span class="sub">'+esc(sub)+'</span>':''),'height:40px;flex:1 1 0;min-width:84px;font-size:11px;flex-direction:column;padding:0 4px'+(on?';background:#ffc71a;color:#1a1400':''),()=>{goboFilter=id;goboPg=0;renderGobo();});};
-  if(selTypes.length)chip('sel','Zaznaczone',selTypes.length+' typ'+(selTypes.length>1?'y':''));
-  known.forEach(t=>chip(t,t,selTypes.indexOf(t)>=0?'w zaznaczeniu':''));
-  chip('all','Wszystkie','');
-  const list=all.filter(n=>{const ty=(PINF[n]||[])[0]||'';
+  const TAB='height:34px;flex:1 1 0;min-width:0;font-size:12px;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+  const ON=';background:#ffc71a;color:#1a1400';
+  const r1=el('div','display:flex;gap:3px;flex:none',goboArea);
+  const tabs=[];if(selTypes.length)tabs.push(['sel','★ Zaznaczone']);known.forEach(t=>tabs.push([t,shortType(t)]));tabs.push(['all','Wszystkie']);
+  tabs.forEach(t=>key(r1,esc(t[1]),TAB+(goboFilter===t[0]?ON:''),()=>{goboFilter=t[0];goboKind='all';goboPg=0;renderGobo();}));
+  const byType=all.filter(n=>{const ty=(PINF[n]||[])[0]||'';
     if(goboFilter==='all')return true;if(goboFilter==='sel')return selTypes.indexOf(ty)>=0;return ty===goboFilter;});
-  const PER=30,pages=Math.max(1,Math.ceil(list.length/PER));if(goboPg>=pages)goboPg=pages-1;
+  const kinds=GOBO_KINDS.filter(k=>byType.some(n=>goboKindOf(n)===k[0]));
+  if(goboKind!=='all'&&!kinds.some(k=>k[0]===goboKind))goboKind='all';
+  const r2=el('div','display:flex;gap:3px;flex:none',goboArea);
+  [['all','Wszystko']].concat(kinds).forEach(k=>key(r2,esc(k[1]),TAB+';height:30px;font-size:11px'+(goboKind===k[0]?';background:#5e5ce6;color:#fff':''),()=>{goboKind=k[0];goboPg=0;renderGobo();}));
+  const list=byType.filter(n=>goboKind==='all'||goboKindOf(n)===goboKind);
+  const PER=24,pages=Math.max(1,Math.ceil(list.length/PER));if(goboPg>=pages)goboPg=pages-1;
   const nav=el('div','display:flex;gap:4px;align-items:center;flex:none',goboArea);
-  el('div','flex:1;font-size:10px;color:#8e8e93',nav,list.length+' presetów'+(Object.keys(PINF).length?'':' – obrazki i typy po wtyczce v22'));
+  const nInf=Object.keys(PINF).length;
+  el('div','flex:1;font-size:10px;color:#8e8e93',nav,list.length+' presetów'+(nInf?'':' · brak typów i obrazków – potrzebna wtyczka v23'));
   key(nav,'◀','height:28px;width:40px;flex:none',()=>{if(goboPg>0){goboPg--;renderGobo();}});
   el('div','width:40px;text-align:center;color:#a1a1a6',nav,(goboPg+1)+'/'+pages).className='mono';
   key(nav,'▶','height:28px;width:40px;flex:none',()=>{if(goboPg<pages-1){goboPg++;renderGobo();}});
-  const grid=el('div','flex:1;min-height:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));gap:5px',goboArea);
+  const grid=el('div','flex:1;min-height:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:5px',goboArea);
   swipePager(grid,d=>{goboPg=Math.max(0,Math.min(pages-1,goboPg+d));renderGobo();});
   list.slice(goboPg*PER,(goboPg+1)*PER).forEach(n=>{
     const it=P.items[n]||{},inf=PINF[n]||[],img=inf[3]||'',setName=inf[4]||'';
     const generic=!it.name||/^Preset \d+$/i.test(it.name);
     const label=generic&&setName?setName:(it.name||'Preset 3.'+n);
-    const icon=setIcon({img:img,name:/open/i.test(label)||/open/i.test(setName)?'open':label},40);
+    const isOpen=/open/i.test(label)||/^open$/i.test(setName);
+    const icon=setIcon({img:img,name:isOpen?'open':label},44)||'<span style="display:inline-block;width:44px;height:44px"></span>';
     const b=tapKey(grid,'<span style="position:absolute;left:4px;top:2px;font-size:10px;opacity:.85">3.'+n+'</span>'+
-      '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:2px">'+(icon||'')+
+      '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:3px">'+icon+
       '<span style="font-size:10px;line-height:1.1;max-height:2.2em;overflow:hidden;text-align:center">'+esc(label)+'</span></div>',
       'height:auto;min-height:0;position:relative;padding-top:10px'+(it.col?';background:'+shade(it.col,0.42)+';box-shadow:inset 0 3px 0 '+it.col:''),
       ()=>objTap('Preset 3.'+n,'At Preset 3.'+n));

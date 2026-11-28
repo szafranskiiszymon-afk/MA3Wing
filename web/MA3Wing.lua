@@ -303,6 +303,10 @@ local function sfOfFid(fid)
             if f and fidToSf[f] == nil then fidToSf[f] = i end
         end
     end
+    if fidToSf[fid] == nil then
+        local ok, l = pcall(ObjectList, 'Fixture ' .. fid)
+        if ok and type(l) == 'table' and l[1] ~= nil then fidToSf[fid] = l[1] end
+    end
     return fidToSf[fid]
 end
 local slotCache = {}
@@ -341,6 +345,7 @@ local function slotFor(sf, attr, v)
 end
 local presetInfoCache = {}      -- [no] = "typ|fid|atrybut|obrazek|channelset"
 local presetInfoQueue = 0
+local presetInfoReported = false
 local function presetInfo(p)
     local ok, d = pcall(GetPresetData, p, false, true)
     if not ok or type(d) ~= 'table' or type(d.by_fixtures) ~= 'table' then return '' end
@@ -399,6 +404,17 @@ local function poolScan()
     end
     scan('GRP', 'Group 1 Thru ' .. POOL_MAX, 'GRP')
     for _, t in ipairs(PRESET_POOLS) do scan('PRE' .. t .. '.', 'Preset ' .. t .. '.1 Thru ' .. t .. '.' .. POOL_MAX, 'PRE', t) end
+    if not presetInfoReported then
+        presetInfoReported = true
+        local typed, withImg = 0, 0
+        for _, v in pairs(presetInfoCache) do
+            local t, _, _, img = v:match('^([^|]*)|([^|]*)|([^|]*)|([^|]*)')
+            if t and t ~= '' then typed = typed + 1 end
+            if img and img ~= '' then withImg = withImg + 1 end
+        end
+        local cntOk = pcall(GetSubfixtureCnt)
+        say(string.format('presety gobo: %d z typem urzadzenia, %d z obrazkiem (GetSubfixtureCnt %s)', typed, withImg, cntOk and 'OK' or 'brak'))
+    end
     local sig = {}
     for _, k in ipairs(keys) do sig[#sig + 1] = k .. '=' .. out[k] end
     return out, keys, table.concat(sig, ';')
@@ -671,9 +687,9 @@ local function run()
     if net then
         netLast = {}
         netSendRaw(enc('HELLO=1'))
-        say('start (v22), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
+        say('start (v23), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
     else
-        say('start (v22), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+        say('start (v23), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
     end
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
