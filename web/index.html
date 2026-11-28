@@ -71,8 +71,7 @@ function tx(addr,type,val){
   if(wsOk){try{ws.send(addr+'\t'+type+'\t'+val);}catch(e){}}
   osc((wsOk?'OSC → ':'BRAK POŁĄCZENIA – ')+addr+' '+(type==='s'?'"'+val+'"':val));
 }
-function cmdSend(c){tx('/cmd','s',c);
-  if(!layInternal&&/^(Clear|Group|Fixture|Channel|Selection|Next|Previous|\d)/i.test(c)&&laySel.length){laySel=[];paintLaySel();}}
+function cmdSend(c){tx('/cmd','s',c);}
 // Executor key like on the console: if a command is pending in the command line
 // (e.g. "Store", "Update", "Copy", "Delete", "Edit", "Label"...), the key completes it with
 // that executor instead of firing the executor: "Store" + key 201 -> Store Exec 1.201
@@ -103,6 +102,7 @@ function feedback(line){
   if(/^(GRP|PRE\d+\.)/.test(p[1]||'')){poolFeedback(p[1],p[2]||'');return;}
   if(/^LAY/.test(p[1]||'')){layoutFeedback(p[1],p[2]||'');return;}
   if(p[1]==='KEYS'){maTyped=(p[2]==='ok');return;}
+  if(p[1]==='SEL'){laySel=(p[2]||'').split(',').filter(Boolean).map(Number);paintLaySel();return;}   // MA's real selection (plugin v17)
   if(p[1]==='CMDLINE')return;   // the command line lives on the iPad
   if(touching>0)return;
   const m=/Page(\d+)\/Fader(\d+)$/.exec(p[1]||'');const v=parseFloat(p[2]);

@@ -105,6 +105,26 @@ local function channelInfo(ui)
     if okk and key then csCache[key] = {a, b, c} end
     return a, b, c
 end
+-- numery zaznaczonych urzadzen (w kolejnosci zaznaczenia), np. "101,102,121"
+local function selectionList()
+    local ids, seen = {}, {}
+    local ok, idx = pcall(SelectionFirst)
+    local guard = 0
+    while ok and idx ~= nil and guard < 3000 do
+        guard = guard + 1
+        local oks, sub = pcall(GetSubfixture, idx)
+        if oks and sub ~= nil then
+            local fid = tonumber(prop(sub, 'fid'))
+            if fid == nil then
+                local fx = prop(sub, 'fixture')
+                if fx ~= nil and type(fx) ~= 'string' then fid = tonumber(prop(fx, 'fid')) end
+            end
+            if fid and not seen[fid] then seen[fid] = true; ids[#ids + 1] = fid end
+        end
+        ok, idx = pcall(SelectionNext, idx)
+    end
+    return table.concat(ids, ',')
+end
 local function attrList()
     local list = {}
     local ok, sf = pcall(SelectionFirst)
@@ -397,7 +417,7 @@ local function mirrorTick()
     end
 end
 
-local function writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys)
+local function writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel)
     local f, err = io.open(file, 'w')
     if not f then return false, err end
     for _, base in ipairs(ROWS) do
@@ -416,6 +436,7 @@ local function writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, 
     if lays and layKeys then
         for _, k in ipairs(layKeys) do f:write(k, '=', lays[k], '\n') end
     end
+    if sel ~= nil then f:write('SEL=', sel, '\n') end
     attrs = attrs or {}
     f:write('ATTRN=', #attrs, '\n')
     for i, a in ipairs(attrs) do
@@ -441,7 +462,7 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v16), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v17), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
@@ -449,6 +470,7 @@ local function run()
     local cmd, lastCmd = nil, nil
     local pools, poolKeys, lastPoolSig = {}, {}, nil
     local lays, layKeys, lastLaySig = {}, {}, nil
+    local sel = nil
     while MA3WingToken == token do
         local page = pageNumber()
         local changed = (page ~= lastPage)
@@ -456,6 +478,8 @@ local function run()
         if tick % 3 == 1 then                       -- zaznaczenie sprawdzamy co ~0.3 s
             local l, sig = attrList()
             if sig ~= lastSig then attrs, lastSig, changed = l, sig, true end
+            local s = selectionList()
+            if s ~= sel then sel, changed = s, true end
         end
         mirrorTick()
         cmd = cmdLine()
@@ -487,7 +511,7 @@ local function run()
             end
         end
         if changed then
-            local ok, err = writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys)
+            local ok, err = writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel)
             if ok then
                 last, lastPage = vals, page
             else
