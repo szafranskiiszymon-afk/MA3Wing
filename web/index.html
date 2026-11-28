@@ -204,7 +204,7 @@ function holdKey(dir,letter){}
 function holdBtn(parent,label,letter,bg,fg){
   let held=false,timer=null,longp=false;
   return key(parent,label,'height:auto;min-height:0;background:'+bg+';color:'+fg,
-    ()=>{holdKey('d',letter);held=true;longp=false;const c=S.cmd;S.cmd=c+(c&&!/ $/.test(c)?' ':'')+label+' ';showCmd();
+    ()=>{holdKey('d',letter);held=true;longp=false;const c=S.cmd;if((c.trim().split(/\s+/).pop()||'')!==label)S.cmd=c+(c&&!/ $/.test(c)?' ':'')+label+' ';showCmd();
       osc(label+(letter==='S'?' – wybierz cel (przytrzymaj = opcje Store)':' – wybierz cel'));
       if(letter==='S'){clearTimeout(timer);timer=setTimeout(()=>{if(held){holdKey('u',letter);held=false;longp=true;openStoreOpts();}},350);}},
     ()=>{clearTimeout(timer);if(held){holdKey('u',letter);held=false;}});
@@ -257,7 +257,8 @@ function pad(kind,v){
   const c=S.cmd;
   if(kind==='d'){const t=(c&&!/[0-9. ]$/.test(c))?' '+v:v;typeText(t);S.cmd=c+t;}
   else if(kind==='dot'){typeText('.');S.cmd=c+'.';}
-  else if(kind==='kw'){const t=(c&&!/ $/.test(c)?' ':'')+v+' ';typeText(t);S.cmd=c+t;}
+  else if(kind==='kw'){const last=(c.trim().split(/\s+/).pop()||'');if(last.toLowerCase()===String(v).toLowerCase()){showCmd();return;}
+    const t=(c&&!/ $/.test(c)?' ':'')+v+' ';typeText(t);S.cmd=c+t;}
   else if(kind==='dir')cmdSend(v);
   else if(kind==='please'){if(c.trim()){typeKey('{ESC}');cmdSend(c.trim()+(S.storeOpt&&/^Store\b/i.test(c.trim())?' '+S.storeOpt:''));}else typeKey('{ENTER}');S.cmd='';S.storeOpt='';}
   else if(kind==='clear'){if(c){typeKey('{ESC}');S.cmd='';}else cmdSend('Clear');}
