@@ -160,6 +160,9 @@ function applyExec(n,v){
 let maTyped=true;      // false when the bridge could not type into onPC (minimized)
 function completeWith(obj){
   let c=S.cmd.trim();
+  // Assign/Copy/Move/Clone without a source yet: the tapped object is the SOURCE, so just put it
+  // into the command line and wait for the target (e.g. Assign, Group 5, then fader key 201)
+  if(/^(Assign|Copy|Move|Clone)$/i.test(c)){const t=' '+obj+' ';typeText(t);S.cmd=c+t;showCmd();osc('MA linia komend ← '+S.cmd+' (wybierz cel)');return;}
   // Assign/Copy/Move/Clone need "At" before the target: "Assign Group 5 At Exec 201"
   if(/^(Assign|Copy|Move|Clone)\b/i.test(c)&&/\d/.test(c)&&!/\b(At|Thru|\+|-)$/i.test(c))c+=' At';
   typeKey('{ESC}');cmdSend(c+' '+obj);S.cmd='';showCmd();
