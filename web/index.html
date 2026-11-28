@@ -61,6 +61,7 @@ html,body{margin:0;background:#000;overflow:hidden;touch-action:none;-webkit-use
 (function(){
 const S={page:1,f:{},kn:{},enc:[0,0,0,0,0],gm:100,m:100,xf:0,cmd:''};
 let layEls=[],laySel=[],layInternal=false;
+let laySelMode='lin';try{laySelMode=localStorage.getItem('ma3wing.selmode')||'lin';}catch(e){}
 const stage=document.getElementById('stage');
 function el(tag,style,parent,html){const e=document.createElement(tag);if(style)e.style.cssText=style;if(html!=null)e.innerHTML=html;if(parent)parent.appendChild(e);return e;}
 const clamp=v=>Math.round(Math.max(0,Math.min(100,v)));
@@ -675,6 +676,10 @@ const layHead=el('div','display:flex;gap:4px;align-items:center;height:34px;flex
 key(layHead,'◀','height:34px;width:34px;flex:none',()=>{if(layFirst>0){layFirst--;renderViews();}});
 const layTabs=el('div','display:flex;gap:4px;flex:1;min-width:0',layHead);
 key(layHead,'▶','height:34px;width:34px;flex:none',()=>{if(layFirst+7<layList.length){layFirst++;renderViews();}});
+const selModeBtn=key(layHead,'','height:34px;width:64px;flex:none;font-size:11px',()=>{laySelMode=laySelMode==='2d'?'lin':'2d';
+  try{localStorage.setItem('ma3wing.selmode',laySelMode)}catch(e){}paintSelMode();osc('Selection Mode: '+(laySelMode==='2d'?'2D Grid':'Linear'));});
+function paintSelMode(){selModeBtn.innerHTML=laySelMode==='2d'?'2D Grid':'Linear';selModeBtn.style.background=laySelMode==='2d'?'#5e5ce6':'';selModeBtn.style.color=laySelMode==='2d'?'#fff':'';}
+paintSelMode();
 key(layHead,'⤢','height:34px;width:34px;flex:none',()=>resetLayZoom());
 key(layHead,'⇅','height:34px;width:34px;flex:none',()=>{layFlipY=!layFlipY;try{localStorage.setItem('ma3wing.layflip',layFlipY?'1':'0')}catch(e){}renderViews();});
 const layMain=el('div','flex:1;min-height:0;display:flex;gap:8px',layView);
@@ -743,9 +748,26 @@ function fixList(ids){   // keeps the selection order, folds consecutive numbers
     out.push(j>i?ids[i]+' Thru '+ids[j]:String(ids[i]));i=j+1;}
   return out.join(' + ');
 }
+// Selection Mode like MA's layout view: Linear (selection order on the X axis) or 2D Grid
+// (each fixture goes to the selection-grid cell matching its place in the layout: Grid x/y before it)
+function gridCells(ids){
+  const pos={};layEls.forEach(o=>{if(o.fid!==null&&ids.indexOf(o.fid)>=0&&!pos[o.fid])pos[o.fid]={x:o.x+o.w/2,y:o.y+o.h/2,s:Math.min(o.w,o.h)};});
+  const pts=Object.values(pos);if(!pts.length)return {};
+  const tol=Math.max(4,Math.min(...pts.map(p=>p.s))*0.5);
+  const axis=k=>{const v=[...new Set(pts.map(p=>p[k]))].sort((a,b)=>a-b),cols=[];v.forEach(x=>{if(!cols.length||x-cols[cols.length-1][0]>tol)cols.push([x]);else cols[cols.length-1].push(x);});
+    return x=>cols.findIndex(c=>x>=c[0]-0.01&&x<=c[c.length-1]+0.01);};
+  const cx=axis('x'),cy=axis('y'),out={};
+  Object.keys(pos).forEach(id=>{out[id]=[cx(pos[id].x),cy(pos[id].y)];});
+  return out;
+}
 function sendLaySel(){
   layInternal=true;
-  cmdSend(laySel.length?'ClearSelection ; Fixture '+fixList(laySel):'ClearSelection');
+  if(!laySel.length)cmdSend('ClearSelection');
+  else if(laySelMode==='2d'){
+    const cells=gridCells(laySel),parts=['ClearSelection'];
+    laySel.forEach(id=>{const c=cells[id];if(c)parts.push('Grid '+c[0]+'/'+c[1]);parts.push('Fixture '+id);});
+    cmdSend(parts.join(' ; '));
+  } else cmdSend('ClearSelection ; Fixture '+fixList(laySel));
   layInternal=false;paintLaySel();
 }
 function layHit(x,y){for(let i=layEls.length-1;i>=0;i--){const o=layEls[i];if(x>=o.x&&x<=o.x+o.w&&y>=o.y&&y<=o.y+o.h)return o;}return null;}
