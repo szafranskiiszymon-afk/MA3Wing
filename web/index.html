@@ -488,9 +488,9 @@ const lend=()=>{lst=null};lwW.addEventListener('pointerup',lend);lwW.addEventLis
 // Xkeys X1..X16 docked in the free bottom-right corner of the command section
 const xDock=el('div','margin-top:auto;margin-bottom:auto;align-self:center;display:flex;flex-direction:column;gap:6px',cs);
 xDock.appendChild(xl);xDock.appendChild(xr1);xDock.appendChild(xr2);
-const XK=46;   // bigger Xkeys in the dock
+const XK=60,XH=46;   // bigger Xkeys in the dock (width, height)
 xl.querySelectorAll('div').forEach(d=>{if(d.style.width===U+'px')d.style.width=XK+'px';});
-[xr1,xr2].forEach(r=>r.querySelectorAll('.k').forEach(k=>{k.style.width=XK+'px';k.style.height=XK+'px';k.style.fontSize='12px';}));
+[xr1,xr2].forEach(r=>r.querySelectorAll('.k').forEach(k=>{k.style.width=XK+'px';k.style.height=XH+'px';k.style.fontSize='12px';}));
 
 // ===== Groups / Presets pools (plugin v7: GRPn, GRPLIST, PREt.n, PREt.LIST) =====
 const POOLS={GRP:{items:{},list:null}};
