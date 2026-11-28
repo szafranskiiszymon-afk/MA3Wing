@@ -206,20 +206,28 @@ function Find-GoboImage([string]$name) {
         Get-Process app_gma3, gma3* -ErrorAction SilentlyContinue | ForEach-Object {
             try { $d = Split-Path (Split-Path $_.Path -Parent) -Parent; if ($d -and -not $roots.Contains($d)) { [void]$roots.Add($d) } } catch {}
         }
-        foreach ($r in @("$env:ProgramData\MALightingTechnology", "$env:LOCALAPPDATA\MALightingTechnology", "$env:APPDATA\MALightingTechnology",
+        foreach ($r in @("$env:ProgramData\MALightingTechnology", "$env:USERPROFILE\Documents\MALightingTechnology", "$env:PUBLIC\Documents\MALightingTechnology", "$env:LOCALAPPDATA\MALightingTechnology", "$env:APPDATA\MALightingTechnology",
                          "$env:USERPROFILE\MALightingTechnology", "${env:ProgramFiles}\MALightingTechnology", "${env:ProgramFiles}\MA Lighting Technologies")) {
             if ($r -and (Test-Path $r) -and -not $roots.Contains($r)) { [void]$roots.Add($r) }
         }
         foreach ($r in $roots) {
             Get-ChildItem -LiteralPath $r -Recurse -File -ErrorAction SilentlyContinue |
                 Where-Object { $_.Extension -match '^\.(png|jpe?g|svg|bmp)$' } |
-                ForEach-Object { $k = $_.Name.ToLowerInvariant(); if (-not $script:goboIndex.ContainsKey($k)) { $script:goboIndex[$k] = $_.FullName } }
+                ForEach-Object { $k = $_.Name.ToLowerInvariant(); if (-not $script:goboIndex.ContainsKey($k)) { $script:goboIndex[$k] = New-Object System.Collections.ArrayList }; [void]$script:goboIndex[$k].Add($_.FullName) }
         }
         Write-Host "  obrazki gobo: znaleziono $($script:goboIndex.Count) plikow w: $($roots -join ' | ')" -ForegroundColor DarkGray
         $robe = @($script:goboIndex.Keys | Where-Object { $_ -like 'robe@*' }).Count
         Write-Host "  obrazki gobo: w tym Robe@*: $robe" -ForegroundColor DarkGray
     }
-    $f = $script:goboIndex[$name]
+    # $name = sciezka z MA, np. gobo/martin/xyz.png -> szukamy po nazwie pliku, przy kilku trafieniach po koncowce sciezki
+    $rel = $name.Replace('/', '\')
+    $base = Split-Path $rel -Leaf
+    $f = $null
+    $list = $script:goboIndex[$base]
+    if ($list) {
+        $f = $list | Where-Object { $_.ToLowerInvariant().EndsWith('\' + $rel) } | Select-Object -First 1
+        if (-not $f) { $f = $list[0] }
+    }
     if (-not $f -and $script:goboMiss -lt 5) { $script:goboMiss++; Write-Host "  obrazek gobo nie znaleziony: $name" -ForegroundColor Yellow }
     return $f
 }

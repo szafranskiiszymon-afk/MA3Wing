@@ -684,7 +684,11 @@ function renderGobo(){
   const nImg=attrs.reduce((n,a)=>n+a.sets.filter(s=>s.img).length,0);
   el('div','font-size:10px;color:#8e8e93;flex:none',goboArea,nImg?('obrazki z MA: '+nImg+(goboUrl('x')?'':' – widoczne tylko przez laptopa (most)')+'; czerwone kółko = most nie znalazł pliku'):'wtyczka nie podała obrazków (potrzebna v20)');
   // main wheels: attribute's own function with 3+ slots; other functions (spin, shake...) as small buttons
-  const wheels=attrs.filter(a=>a.sets.filter(s=>s.fn===a.name).length>=3);
+  const isWheel=a=>/^(Gobo|Animation|Effect)\d*$/i.test(a.name)||a.sets.some(s=>s.img);
+  let wheels=attrs.filter(a=>isWheel(a)&&!/Pos/i.test(a.name)&&a.sets.filter(s=>s.fn===a.name).length>=2);
+  if(!wheels.length)wheels=attrs.filter(a=>a.sets.filter(s=>s.fn===a.name).length>=3);
+  wheels.sort((u,v)=>u.name.localeCompare(v.name,undefined,{numeric:true}));
+  const posOf=w=>attrs.find(a=>a.name.toLowerCase()===(w.name+'Pos').toLowerCase());
   if(!wheels.length){el('div','color:#8e8e93;font-size:13px;padding:10px',goboArea,'Ten typ nie ma kół gobo.');return;}
   const PER=6;
   wheels.slice(0,2).forEach(a=>{
@@ -706,9 +710,10 @@ function renderGobo(){
         (setIcon(s,44)||'<span style="display:inline-block;width:44px;height:44px;border-radius:50%;border:2px solid #666;box-sizing:border-box"></span>')+
         '<span style="font-size:10px;line-height:1.1;max-height:2.2em;overflow:hidden;text-align:center">'+esc(s.name)+'</span></div>',
         'height:auto;position:relative;padding-top:8px;flex-direction:column;justify-content:center'+(goboLast[k]===s.name?';outline:3px solid #ffc71a;outline-offset:-2px':''),()=>{goboLast[k]=s.name;applyToType(t,a.name,s.dmx);renderGobo();});});
-    const extra=a.sets.filter(s=>s.fn!==a.name);
+    const pa=posOf(a);
+    const extra=a.sets.filter(s=>s.fn!==a.name).concat(pa?pa.sets.filter(s=>s.fn!==pa.name).map(s=>Object.assign({},s,{attr:pa.name})):[]);
     if(extra.length){const er2=el('div','display:flex;gap:4px;flex:none',goboArea);
-      extra.slice(0,6).forEach(s=>tapKey(er2,esc(s.name),'height:28px;padding:0 6px;font-size:10px;flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden',()=>applyToType(t,a.name,s.dmx)));}
+      extra.slice(0,8).forEach(s=>tapKey(er2,(s.attr?'↻ ':'')+esc(s.name),'height:28px;padding:0 4px;font-size:10px;flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden',()=>applyToType(t,s.attr||a.name,s.dmx)));}
   });
 }
 // ===== Views tab (plugin v10: LAYLIST, LAYn=name|col, LAYNn=count, LAYELn.i=x|y|w|h|label|addr|col) =====

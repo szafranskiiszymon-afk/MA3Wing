@@ -91,7 +91,7 @@ local function channelInfoRaw(lc)
                 local img, rgba = '', ''
                 local si = tonumber(prop(cs, 'wheelslotindex'))
                 if slots and si and slots[si] then
-                    img = tostring(prop(slots[si], 'mediafilename') or ''):match('([^/\\]+)$') or ''
+                    img = tostring(prop(slots[si], 'mediafilename') or ''):gsub('\\', '/')
                     local c = tostring(prop(slots[si], 'imagergba') or '')
                     if c:match('^%x%x%x%x%x%x%x%x$') and c:upper() ~= 'FFFFFFFF' then rgba = c:sub(1, 6) end
                 end
@@ -585,9 +585,9 @@ local function run()
     if net then
         netLast = {}
         netSendRaw(enc('HELLO=1'))
-        say('start (v20), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
+        say('start (v21), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
     else
-        say('start (v20), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+        say('start (v21), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
     end
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
