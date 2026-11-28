@@ -61,6 +61,7 @@ html,body{margin:0;background:#000;overflow:hidden;touch-action:none;-webkit-use
 (function(){
 const S={page:1,f:{},kn:{},enc:[0,0,0,0,0],gm:100,m:100,xf:0,cmd:''};
 let layEls=[],laySel=[],layInternal=false;
+let layDir={right:true,down:true};
 let laySelMode='lin';try{laySelMode=localStorage.getItem('ma3wing.selmode')||'lin';}catch(e){}
 const stage=document.getElementById('stage');
 function el(tag,style,parent,html){const e=document.createElement(tag);if(style)e.style.cssText=style;if(html!=null)e.innerHTML=html;if(parent)parent.appendChild(e);return e;}
@@ -757,7 +758,9 @@ function gridCells(ids){
   const axis=k=>{const v=[...new Set(pts.map(p=>p[k]))].sort((a,b)=>a-b),cols=[];v.forEach(x=>{if(!cols.length||x-cols[cols.length-1][0]>tol)cols.push([x]);else cols[cols.length-1].push(x);});
     return x=>cols.findIndex(c=>x>=c[0]-0.01&&x<=c[c.length-1]+0.01);};
   const cx=axis('x'),cy=axis('y'),out={};
-  Object.keys(pos).forEach(id=>{out[id]=[cx(pos[id].x),cy(pos[id].y)];});
+  let mx=0,my=0;Object.keys(pos).forEach(id=>{mx=Math.max(mx,cx(pos[id].x));my=Math.max(my,cy(pos[id].y));});
+  Object.keys(pos).forEach(id=>{const x=cx(pos[id].x),y=cy(pos[id].y);
+    out[id]=[layDir.right?x:mx-x,layDir.down?y:my-y];});
   return out;
 }
 function sendLaySel(){
@@ -800,8 +803,14 @@ function resetLayZoom(){LAYZ[curLay]={z:1,x:0,y:0};applyLayZoom();}
     if(e.type!=='pointerup'){if(lasso){lasso.remove();lasso=null;}return;}
     if(lasso){lasso.remove();lasso=null;
       const a=inner({x:Math.min(p.x,s.x),y:Math.min(p.y,s.y)}),b=inner({x:Math.max(p.x,s.x),y:Math.max(p.y,s.y)});
-      const hit=layEls.filter(o=>o.fid!==null&&o.x<b.x&&o.x+o.w>a.x&&o.y<b.y&&o.y+o.h>a.y)
-        .sort((u,v)=>(s.x<=p.x?u.x-v.x:v.x-u.x)||(u.y-v.y));     // lasso order follows the drag direction
+      const right=p.x>=s.x,down=p.y>=s.y;layDir={right:right,down:down};
+      const hit=layEls.filter(o=>o.fid!==null&&o.x<b.x&&o.x+o.w>a.x&&o.y<b.y&&o.y+o.h>a.y);
+      // like MA: row by row; rows in the vertical drag direction, inside a row in the horizontal direction
+      const tol=Math.max(4,Math.min(...hit.map(o=>Math.min(o.w,o.h)),999)*0.5);
+      const ys=[...new Set(hit.map(o=>o.y+o.h/2))].sort((m,n)=>m-n),rows=[];
+      ys.forEach(y=>{if(!rows.length||y-rows[rows.length-1][rows[rows.length-1].length-1]>tol)rows.push([y]);else rows[rows.length-1].push(y);});
+      const rowOf=o=>rows.findIndex(r=>r.indexOf(o.y+o.h/2)>=0);
+      hit.sort((u,v)=>(down?rowOf(u)-rowOf(v):rowOf(v)-rowOf(u))||(right?u.x-v.x:v.x-u.x));
       let added=0;hit.forEach(o=>{if(laySel.indexOf(o.fid)<0){laySel.push(o.fid);added++;}});
       if(added){vib();sendLaySel();}
       return;}
