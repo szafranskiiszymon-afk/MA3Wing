@@ -117,6 +117,7 @@ function rememberShow(k,v){if(/^(\/Page|SEL$|ATTR|CMDLINE|KEYS|TYPE|TATTR)/.test
 function feedback(line){
   const p=line.split('\t');if(p[0]!=='fb')return;
   rememberShow(p[1]||'',p[2]||'');
+  if(/^PINF3\.\d+$/.test(p[1]||'')){PINF[+p[1].slice(6)]=(p[2]||'').split('|');clearTimeout(goboTimer);goboTimer=setTimeout(()=>{if(curTab==='Presets'&&presetType===3)renderGobo();},120);return;}
   if(/^(TYPE|TATTR)/.test(p[1]||'')){typeFeedback(p[1],p[2]||'');return;}
   if(/^ATTR/.test(p[1]||'')){attrFeedback(p[1],p[2]||'');return;}
   if(/^EXEC\d+$/.test(p[1]||'')){applyExec(+p[1].slice(4),p[2]||'');return;}
@@ -622,10 +623,9 @@ function poolTap(i){
 function renderPool(){
   if(curTab==='Wing')return;
   const P=POOLS[poolKey()];const PP=perPage(),gobo=PP!==PER_PAGE;
-  goboArea.style.display=gobo?'flex':'none';goboPoolLbl.style.display=gobo?'block':'none';
-  poolGrid.style.flex=gobo?'none':'1';poolGrid.style.height=gobo?'112px':'';
-  poolGrid.style.gridTemplateRows=gobo?'repeat(2,minmax(0,1fr))':'repeat(8,minmax(0,1fr))';
-  if(gobo)renderGobo();
+  goboArea.style.display=gobo?'flex':'none';goboPoolLbl.style.display='none';
+  poolGrid.style.display=gobo?'none':'grid';[...poolHead.children].forEach(c=>{if(c!==poolTypes)c.style.visibility=gobo?'hidden':'';});
+  if(gobo){poolTypes.style.display='flex';PTYPES.forEach(t=>{const b=typeBtns[t[0]],on=t[0]===presetType;b.style.background=on?'#ffc71a':'';b.style.color=on?'#1a1400':'';});renderGobo();return;}
   const maxNo=Math.max(0,...(P.list||[0]));const pages=Math.max(1,Math.ceil((maxNo+1)/PP));
   if(poolPage>=pages)poolPage=pages-1;
   poolPgLab.textContent=(poolPage+1)+'/'+pages;
@@ -644,7 +644,7 @@ function renderPool(){
   }
 }
 // ===== Gobo tab: wheels of the selected fixture types (plugin v20: TYPEN, TYPEi=name|fids, TATTRi.j=attr line) =====
-const GT={n:0,types:[]};let goboType=0,goboTimer=null;const goboPage={},goboRot={},goboLast={};
+const GT={n:0,types:[]};const PINF={};let goboFilter='sel',goboPg=0;let goboType=0,goboTimer=null;const goboPage={},goboRot={},goboLast={};
 function typeFeedback(k,v){
   let m;
   if(k==='TYPEN'){GT.n=+v||0;GT.types.length=GT.n;}
@@ -671,49 +671,40 @@ function applyToType(t,attr,dmx){
   cmdSend('ClearSelection ; Fixture '+fixList(t.fids)+' ; '+cmd+' ; ClearSelection ; Fixture '+fixList(all));
   layInternal=false;
 }
+// Your gobo presets (pool 3) with the gobo picture and fixture type read from the preset (plugin v22: PINF3.n=type|fid|attr|img|channelset)
 function renderGobo(){
   goboArea.innerHTML='';
-  const types=GT.types.filter(Boolean);
-  if(!types.length){el('div','color:#8e8e93;font-size:13px;padding:12px;line-height:1.5',goboArea,'Zaznacz urządzenia (grupę albo w layoucie) – pojawią się ich koła gobo.<br>Potrzebna wtyczka MA3Wing v20.');return;}
-  if(goboType>=types.length)goboType=0;
-  const t=types[goboType];
-  const hr=el('div','display:flex;gap:4px;align-items:center;flex:none',goboArea);
-  types.forEach((x,i)=>{const on=i===goboType;
-    key(hr,esc(x.name)+'<span class="sub">'+(x.fids?x.fids.length:0)+' szt.</span>','height:40px;flex:1;min-width:0;font-size:12px;flex-direction:column'+(on?';background:#ffc71a;color:#1a1400':''),()=>{goboType=i;renderGobo();});});
-  const attrs=(t.attrs||[]).filter(a=>a&&a.sets.length);
-  const nImg=attrs.reduce((n,a)=>n+a.sets.filter(s=>s.img).length,0);
-  el('div','font-size:10px;color:#8e8e93;flex:none',goboArea,nImg?('obrazki z MA: '+nImg+(goboUrl('x')?'':' – widoczne tylko przez laptopa (most)')+'; czerwone kółko = most nie znalazł pliku'):'wtyczka nie podała obrazków (potrzebna v20)');
-  // main wheels: attribute's own function with 3+ slots; other functions (spin, shake...) as small buttons
-  const isWheel=a=>/^(Gobo|Animation|Effect)\d*$/i.test(a.name)||a.sets.some(s=>s.img);
-  let wheels=attrs.filter(a=>isWheel(a)&&!/Pos/i.test(a.name)&&a.sets.filter(s=>s.fn===a.name).length>=2);
-  if(!wheels.length)wheels=attrs.filter(a=>a.sets.filter(s=>s.fn===a.name).length>=3);
-  wheels.sort((u,v)=>u.name.localeCompare(v.name,undefined,{numeric:true}));
-  const posOf=w=>attrs.find(a=>a.name.toLowerCase()===(w.name+'Pos').toLowerCase());
-  if(!wheels.length){el('div','color:#8e8e93;font-size:13px;padding:10px',goboArea,'Ten typ nie ma kół gobo.');return;}
-  const PER=6;
-  wheels.slice(0,2).forEach(a=>{
-    const k=t.name+'|'+a.name,rot=!!goboRot[k];
-    const main=a.sets.filter(s=>s.fn===a.name&&(rot?/<>\s*$/.test(s.name):!/<>\s*$/.test(s.name)));
-    const hasRot=a.sets.some(s=>s.fn===a.name&&/<>\s*$/.test(s.name));
-    const pages=Math.max(1,Math.ceil(main.length/PER));let pg=Math.min(goboPage[k]||0,pages-1);goboPage[k]=pg;
-    const head=el('div','display:flex;gap:4px;align-items:center;flex:none;margin-top:4px',goboArea);
-    el('div','flex:1;font:600 11px -apple-system,sans-serif;color:#8e8e93;text-transform:uppercase;letter-spacing:.5px',head,esc(a.pretty)+' · '+esc(a.name));
-    if(hasRot)key(head,'&lt;&gt;','height:28px;width:44px;flex:none'+(rot?';background:#5e5ce6;color:#fff':''),()=>{goboRot[k]=!rot;goboPage[k]=0;renderGobo();});
-    if(pages>1){key(head,'◀','height:28px;width:34px;flex:none',()=>{goboPage[k]=Math.max(0,pg-1);renderGobo();});
-      el('div','width:34px;text-align:center;color:#a1a1a6',head,(pg+1)+'/'+pages).className='mono';
-      key(head,'▶','height:28px;width:34px;flex:none',()=>{goboPage[k]=Math.min(pages-1,pg+1);renderGobo();});}
-    const grid=el('div','display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-auto-rows:82px;gap:5px;flex:none',goboArea);
-    swipePager(grid,d=>{goboPage[k]=Math.max(0,Math.min(pages-1,pg+d));renderGobo();});
-    main.slice(pg*PER,(pg+1)*PER).forEach((s,i)=>{const id=k+'|'+s.name;
-      const b=tapKey(grid,'<span style="position:absolute;left:4px;top:2px;font-size:10px;opacity:.8">'+(pg*PER+i+1)+'</span>'+
-        '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:3px">'+
-        (setIcon(s,44)||'<span style="display:inline-block;width:44px;height:44px;border-radius:50%;border:2px solid #666;box-sizing:border-box"></span>')+
-        '<span style="font-size:10px;line-height:1.1;max-height:2.2em;overflow:hidden;text-align:center">'+esc(s.name)+'</span></div>',
-        'height:auto;position:relative;padding-top:8px;flex-direction:column;justify-content:center'+(goboLast[k]===s.name?';outline:3px solid #ffc71a;outline-offset:-2px':''),()=>{goboLast[k]=s.name;applyToType(t,a.name,s.dmx);renderGobo();});});
-    const pa=posOf(a);
-    const extra=a.sets.filter(s=>s.fn!==a.name).concat(pa?pa.sets.filter(s=>s.fn!==pa.name).map(s=>Object.assign({},s,{attr:pa.name})):[]);
-    if(extra.length){const er2=el('div','display:flex;gap:4px;flex:none',goboArea);
-      extra.slice(0,8).forEach(s=>tapKey(er2,(s.attr?'↻ ':'')+esc(s.name),'height:28px;padding:0 4px;font-size:10px;flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden',()=>applyToType(t,s.attr||a.name,s.dmx)));}
+  const P=POOLS['PRE3.'],all=(P.list||Object.keys(P.items).map(Number)).slice().sort((x,y)=>x-y);
+  const selTypes=GT.types.filter(Boolean).map(t=>t.name);
+  const known=[...new Set(all.map(n=>(PINF[n]||[])[0]).filter(Boolean))];
+  if(goboFilter==='sel'&&!selTypes.length)goboFilter='all';
+  if(goboFilter!=='sel'&&goboFilter!=='all'&&known.indexOf(goboFilter)<0)goboFilter=selTypes.length?'sel':'all';
+  const hr=el('div','display:flex;gap:4px;flex:none;flex-wrap:wrap',goboArea);
+  const chip=(id,label,sub)=>{const on=goboFilter===id;key(hr,esc(label)+(sub?'<span class="sub">'+esc(sub)+'</span>':''),'height:40px;flex:1 1 0;min-width:84px;font-size:11px;flex-direction:column;padding:0 4px'+(on?';background:#ffc71a;color:#1a1400':''),()=>{goboFilter=id;goboPg=0;renderGobo();});};
+  if(selTypes.length)chip('sel','Zaznaczone',selTypes.length+' typ'+(selTypes.length>1?'y':''));
+  known.forEach(t=>chip(t,t,selTypes.indexOf(t)>=0?'w zaznaczeniu':''));
+  chip('all','Wszystkie','');
+  const list=all.filter(n=>{const ty=(PINF[n]||[])[0]||'';
+    if(goboFilter==='all')return true;if(goboFilter==='sel')return selTypes.indexOf(ty)>=0;return ty===goboFilter;});
+  const PER=30,pages=Math.max(1,Math.ceil(list.length/PER));if(goboPg>=pages)goboPg=pages-1;
+  const nav=el('div','display:flex;gap:4px;align-items:center;flex:none',goboArea);
+  el('div','flex:1;font-size:10px;color:#8e8e93',nav,list.length+' presetów'+(Object.keys(PINF).length?'':' – obrazki i typy po wtyczce v22'));
+  key(nav,'◀','height:28px;width:40px;flex:none',()=>{if(goboPg>0){goboPg--;renderGobo();}});
+  el('div','width:40px;text-align:center;color:#a1a1a6',nav,(goboPg+1)+'/'+pages).className='mono';
+  key(nav,'▶','height:28px;width:40px;flex:none',()=>{if(goboPg<pages-1){goboPg++;renderGobo();}});
+  const grid=el('div','flex:1;min-height:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));gap:5px',goboArea);
+  swipePager(grid,d=>{goboPg=Math.max(0,Math.min(pages-1,goboPg+d));renderGobo();});
+  list.slice(goboPg*PER,(goboPg+1)*PER).forEach(n=>{
+    const it=P.items[n]||{},inf=PINF[n]||[],img=inf[3]||'',setName=inf[4]||'';
+    const generic=!it.name||/^Preset \d+$/i.test(it.name);
+    const label=generic&&setName?setName:(it.name||'Preset 3.'+n);
+    const icon=setIcon({img:img,name:/open/i.test(label)||/open/i.test(setName)?'open':label},40);
+    const b=tapKey(grid,'<span style="position:absolute;left:4px;top:2px;font-size:10px;opacity:.85">3.'+n+'</span>'+
+      '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:2px">'+(icon||'')+
+      '<span style="font-size:10px;line-height:1.1;max-height:2.2em;overflow:hidden;text-align:center">'+esc(label)+'</span></div>',
+      'height:auto;min-height:0;position:relative;padding-top:10px'+(it.col?';background:'+shade(it.col,0.42)+';box-shadow:inset 0 3px 0 '+it.col:''),
+      ()=>objTap('Preset 3.'+n,'At Preset 3.'+n));
+    b.title=(inf[0]||'')+' '+(inf[2]||'');
   });
 }
 // ===== Views tab (plugin v10: LAYLIST, LAYn=name|col, LAYNn=count, LAYELn.i=x|y|w|h|label|addr|col) =====

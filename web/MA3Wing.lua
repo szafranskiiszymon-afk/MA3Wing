@@ -290,6 +290,79 @@ local function viaDataPool(kind, t)
     return {}
 end
 local poolCounts = {}
+-- ===== presety Gobo: typ urzadzenia + obrazek slotu z zawartosci presetu (GetPresetData) =====
+local fidToSf = nil
+local function sfOfFid(fid)
+    if fidToSf == nil or fidToSf[fid] == nil then
+        fidToSf = {}
+        local okc, cnt = pcall(GetSubfixtureCnt)
+        cnt = (okc and tonumber(cnt)) or 0
+        for i = 1, math.min(cnt, 5000) do
+            local oks, sub = pcall(GetSubfixture, i)
+            local f = oks and sub and tonumber(prop(sub, 'fid'))
+            if f and fidToSf[f] == nil then fidToSf[f] = i end
+        end
+    end
+    return fidToSf[fid]
+end
+local slotCache = {}
+local function slotFor(sf, attr, v)
+    local key = tostring(sf) .. '|' .. attr .. '|' .. tostring(v)
+    if slotCache[key] then return slotCache[key][1], slotCache[key][2] end
+    local img, setName = '', ''
+    local okc, chans = pcall(GetUIChannels, sf)
+    if okc and type(chans) == 'table' then
+        for _, ui in ipairs(chans) do
+            local oka, a = pcall(GetAttributeByUIChannel, ui)
+            if oka and a and tostring(prop(a, 'name')) == attr then
+                local lc = logicalChannel(ui)
+                for _, cf in ipairs(children(lc)) do
+                    local okw, wh = pcall(function() return cf.wheel end)
+                    local slots = (okw and wh ~= nil and type(wh) ~= 'string') and children(wh) or nil
+                    for _, cs in ipairs(children(cf)) do
+                        local d1, d2 = tonumber(prop(cs, 'dmxfrom')), tonumber(prop(cs, 'dmxto'))
+                        if d1 and d2 and v >= math.min(d1, d2) and v <= math.max(d1, d2) then
+                            setName = clean(prop(cs, 'name'))
+                            local si = tonumber(prop(cs, 'wheelslotindex'))
+                            if slots and si and slots[si] then
+                                img = tostring(prop(slots[si], 'mediafilename') or ''):gsub('\\', '/')
+                            end
+                            break
+                        end
+                    end
+                    if setName ~= '' then break end
+                end
+                break
+            end
+        end
+    end
+    slotCache[key] = {img, setName}
+    return img, setName
+end
+local presetInfoCache = {}      -- [no] = "typ|fid|atrybut|obrazek|channelset"
+local presetInfoQueue = 0
+local function presetInfo(p)
+    local ok, d = pcall(GetPresetData, p, false, true)
+    if not ok or type(d) ~= 'table' or type(d.by_fixtures) ~= 'table' then return '' end
+    local fid, attrs = nil, nil
+    for f, a in pairs(d.by_fixtures) do
+        local n = tonumber(f)
+        if n and (fid == nil or n < fid) then fid, attrs = n, a end
+    end
+    if not fid or type(attrs) ~= 'table' then return '' end
+    local attr, v = nil, nil
+    for name, val in pairs(attrs) do
+        if type(val) == 'table' and type(val[1]) == 'table' and val[1].absolute_value ~= nil then
+            if attr == nil or tostring(name):match('^Gobo%d$') then attr, v = tostring(name), tonumber(val[1].absolute_value) end
+        end
+    end
+    local sf = sfOfFid(fid)
+    local tname = ''
+    if sf then local _, n = typeOf(sf); tname = n or '' end
+    local img, setName = '', ''
+    if sf and attr and v then img, setName = slotFor(sf, attr, v) end
+    return clean(tname) .. '|' .. fid .. '|' .. clean(attr or '') .. '|' .. clean(img) .. '|' .. setName
+end
 local function poolScan()
     local out, keys = {}, {}
     local function scan(prefix, query, kind, t)
@@ -303,6 +376,19 @@ local function poolScan()
                     nums[#nums + 1] = no
                     out[prefix .. no] = clean(prop(h, 'name')) .. '|' .. appearanceColor(h)
                     keys[#keys + 1] = prefix .. no
+                    if prefix == 'PRE3.' then
+                        -- 20 presetow na skan: nowe od razu, znane odswiezane po kolei
+                        presetInfoQueue = presetInfoQueue + 1
+                        if presetInfoCache[no] == nil or (presetInfoQueue % 135) < 5 then
+                            if presetInfoCache[no] == nil and presetInfoQueue > 400 then presetInfoQueue = 0 end
+                            local okp, info = pcall(presetInfo, h)
+                            presetInfoCache[no] = okp and info or ''
+                        end
+                        if presetInfoCache[no] ~= '' then
+                            out['PINF3.' .. no] = presetInfoCache[no]
+                            keys[#keys + 1] = 'PINF3.' .. no
+                        end
+                    end
                 end
             end
         end
@@ -585,9 +671,9 @@ local function run()
     if net then
         netLast = {}
         netSendRaw(enc('HELLO=1'))
-        say('start (v21), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
+        say('start (v22), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
     else
-        say('start (v21), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+        say('start (v22), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
     end
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
