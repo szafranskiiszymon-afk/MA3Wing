@@ -53,7 +53,7 @@ local function children(h)
     return {}
 end
 local uiDumped = false
-local function clean(t) return (tostring(t or ''):gsub('[|=;\r\n]', ' ')) end
+local function clean(t) return (tostring(t or ''):gsub('[|=;~\r\n]', ' ')) end
 local function logicalChannel(ui)
     local ok, u = pcall(GetUIChannel, ui)
     if not ok or u == nil then return nil end
@@ -70,23 +70,40 @@ local function logicalChannel(ui)
     end
     return lc
 end
-local function channelInfo(ui)
-    local lc = logicalChannel(ui)
-    if lc == nil then return '', '', '' end
-    local sets, seen, mn, mx = {}, {}, nil, nil
+-- channel sety kanalu: kazda channel function (np. Gobo2, Gobo2WheelSpin) ma swoje sety.
+-- Wynik: "funkcja~nazwa~dmx24;..." - iPad ustawia set przez: Attribute "X" At Absolute Decimal24 <dmx>
+local function channelInfoRaw(lc)
+    local sets, mn, mx = {}, nil, nil
     for _, cf in ipairs(children(lc)) do
-        local a = tonumber(prop(cf, 'physfrom')); local b = tonumber(prop(cf, 'physto'))
-        if a and b then
-            if mn == nil or math.min(a, b) < mn then mn = math.min(a, b) end
-            if mx == nil or math.max(a, b) > mx then mx = math.max(a, b) end
-        end
-        for _, cs in ipairs(children(cf)) do
-            local n = clean(prop(cs, 'name'))
-            if n ~= '' and not seen[n] and #sets < 48 then seen[n] = true; sets[#sets + 1] = n end
+        local fattr = tostring(prop(cf, 'attribute') or prop(cf, 'name') or '')
+        if fattr ~= 'NoFeature' then
+            if mn == nil then
+                mn = tonumber(prop(cf, 'physicalfrom')); mx = tonumber(prop(cf, 'physicalto'))
+            end
+            for _, cs in ipairs(children(cf)) do
+                local n = clean(prop(cs, 'name')):gsub('^%s+', ''):gsub('%s+$', '')
+                local d1 = tonumber(prop(cs, 'dmxfrom')); local d2 = tonumber(prop(cs, 'dmxto'))
+                if n ~= '' and n ~= 'No Feature' and d1 and d2 and #sets < 120 then
+                    local d = math.floor((d1 + d2) / 2)
+                    if d > 16777215 then d = 16777215 end
+                    sets[#sets + 1] = clean(fattr) .. '~' .. n .. '~' .. d
+                end
+            end
         end
     end
     local f = function(v) if v == nil then return '' end return string.format('%g', v) end
+    if mn ~= nil and mx ~= nil and mn > mx then mn, mx = mx, mn end
     return f(mn), f(mx), table.concat(sets, ';')
+end
+local csCache = {}
+local function channelInfo(ui)
+    local lc = logicalChannel(ui)
+    if lc == nil then return '', '', '' end
+    local okk, key = pcall(function() return lc:ToAddr() end)
+    if okk and key and csCache[key] then local c = csCache[key]; return c[1], c[2], c[3] end
+    local a, b, c = channelInfoRaw(lc)
+    if okk and key then csCache[key] = {a, b, c} end
+    return a, b, c
 end
 local function attrList()
     local list = {}
@@ -338,7 +355,7 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v12), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v13), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0

@@ -669,7 +669,7 @@ const cMain=el('div','flex:1;min-height:0;display:flex;gap:10px;padding:10px',cB
 const cPad=el('div','width:330px;flex:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));gap:5px',cMain);
 const cSide=el('div','flex:1;min-width:0;display:flex;flex-direction:column;gap:6px',cMain);
 const cTabs=el('div','display:flex;gap:4px;height:34px;flex:none',cSide);
-const cList=el('div','flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:52px;gap:5px;align-content:start',cSide);
+const cList=el('div','flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:44px;gap:5px;align-content:start',cSide);
 const cNav=el('div','display:flex;gap:4px;height:30px;flex:none',cSide);
 let calcIdx=-1,calcTxt='',calcTab='sets',calcPage=0,calcMode='val',calcAll=false;
 const CMODES=[['val','Wartość'],['fade','Fade'],['delay','Delay']];
@@ -726,15 +726,19 @@ function renderCalc(){
   const tabs=[['sets','Channel Sets']];if(pt)tabs.push(['presets','Presety '+(pt===2?'Position':'Focus')]);
   tabs.forEach(t=>{const on=t[0]===calcTab;key(cTabs,t[1],'height:34px;width:160px;flex:none'+(on?';background:#ffc71a;color:#1a1400':''),()=>{calcTab=t[0];calcPage=0;renderCalc();});});
   let items=[];
-  if(calcTab==='sets')items=(a.sets||[]).map((n,i)=>({label:n,sub:a.pretty||a.name,run:()=>cmdSend('Attribute "'+a.name+'" At ChannelSet "'+n.replace(/"/g,'')+'"')}));
+  if(calcTab==='sets')items=(a.sets||[]).map(s=>{const q=s.split('~');
+    if(q.length>=3&&q[2]!=='')return {label:q[1],sub:q[0],fn:q[0],run:()=>cmdSend('Attribute "'+a.name+'" At Absolute Decimal24 '+q[2])};   // plugin v13: function~name~dmx24
+    return {label:s,sub:a.pretty||a.name,run:()=>cmdSend('Attribute "'+a.name+'" At ChannelSet "'+s.replace(/"/g,'')+'"')};});
   else{const P=POOLS['PRE'+pt+'.'];items=(P.list||[]).map(n=>({label:(P.items[n]||{}).name||('Preset '+pt+'.'+n),sub:pt+'.'+n,col:(P.items[n]||{}).col,run:()=>objTap('Preset '+pt+'.'+n,'At Preset '+pt+'.'+n)}));}
-  const per=18,pages=Math.max(1,Math.ceil(items.length/per));if(calcPage>=pages)calcPage=pages-1;
+  const per=15,pages=Math.max(1,Math.ceil(items.length/per));if(calcPage>=pages)calcPage=pages-1;
   cList.innerHTML='';
   if(!items.length)el('div','grid-column:span 3;color:#8e8e93;font-size:13px;padding:10px;line-height:1.4',cList,
     calcTab==='sets'?(maAttrs.length?'Ten atrybut nie ma channel setów (albo wtyczka w onPC jest starsza niż v12).':'Zaznacz urządzenie w MA – wtyczka v12 odczyta jego channel sety.'):'Brak presetów.');
-  items.slice(calcPage*per,(calcPage+1)*per).forEach(it=>{
+  const fnCols=['#2f3036','#2b3a4a','#3a2f48','#2f4636','#4a3a2b','#2b4646','#46302f'],fnIdx={};let fnN=0;
+  items.forEach(it=>{if(it.fn&&!(it.fn in fnIdx))fnIdx[it.fn]=fnN++;});
+  items.slice(calcPage*per,(calcPage+1)*per).forEach(it=>{if(it.fn&&!it.col)it.bg=fnCols[fnIdx[it.fn]%fnCols.length];
     const b=key(cList,'<span class="nm" style="white-space:normal;max-height:2.4em">'+esc(it.label)+'</span><span class="sub">'+esc(it.sub)+'</span>','height:auto;white-space:normal;line-height:1.2'+
-      (it.col?';background:'+shade(it.col,0.42)+';box-shadow:inset 0 3px 0 '+it.col:';background:#2f3036'),()=>{it.run();closeCalc();});
+      (it.col?';background:'+shade(it.col,0.42)+';box-shadow:inset 0 3px 0 '+it.col:';background:'+(it.bg||'#2f3036')),()=>{it.run();closeCalc();});
   });
   cNav.innerHTML='';cNav.style.visibility=pages>1?'visible':'hidden';
   key(cNav,'◀','height:30px;flex:1',()=>{if(calcPage>0){calcPage--;renderCalc();}});
