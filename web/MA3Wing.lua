@@ -5,6 +5,9 @@
 local COLUMNS = 15        -- ile kolumn executorow sprawdzac (x01..x15)
 local PERIOD  = 0.1       -- co ile sekund sprawdzac zmiany
 local ROWS = {200, 300, 400}
+-- Konsola grandMA3 (albo gdy nie da sie zapisac pliku): dane ida przez siec komenda SendOSC.
+local OSC_LINE  = 1       -- numer linii w Menu - In & Out - OSC, ktora wysyla (Send=Yes) do laptopa z mostem
+local FORCE_NET = false   -- true = zawsze przez siec, nawet na onPC (do testu)
 
 local function say(t) if Printf then Printf('MA3 Wing: ' .. t) else print('MA3 Wing: ' .. t) end end
 
@@ -417,39 +420,65 @@ local function mirrorTick()
     end
 end
 
-local function writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel)
+-- wszystkie dane jako lista {klucz, wartosc}
+local function stateLines(page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel)
+    local L = {}
+    local function put(k, v) L[#L + 1] = {k, tostring(v)} end
+    for _, base in ipairs(ROWS) do
+        for i = 1, COLUMNS do local n = base + i; put('/Page' .. page .. '/Fader' .. n, vals[n] or 0) end
+    end
+    for _, n in ipairs(EXECS) do if execs and execs[n] then put('EXEC' .. n, execs[n]) end end
+    if cmd ~= nil then put('CMDLINE', clean(cmd)) end
+    if pools and poolKeys then for _, k in ipairs(poolKeys) do put(k, pools[k]) end end
+    if lays and layKeys then for _, k in ipairs(layKeys) do put(k, lays[k]) end end
+    if sel ~= nil then put('SEL', sel) end
+    attrs = attrs or {}
+    put('ATTRN', #attrs)
+    for i, a in ipairs(attrs) do
+        put('ATTR' .. i, a[1] .. '|' .. a[2] .. '|' .. a[3] .. '|' .. (a[4] or '') .. '|' .. (a[5] or '') .. '|' .. (a[6] or ''))
+    end
+    return L
+end
+local function writeState(file, ...)
     local f, err = io.open(file, 'w')
     if not f then return false, err end
-    for _, base in ipairs(ROWS) do
-        for i = 1, COLUMNS do
-            local n = base + i
-            f:write('/Page', page, '/Fader', n, '=', vals[n] or 0, '\n')
-        end
-    end
-    for _, n in ipairs(EXECS) do
-        if execs and execs[n] then f:write('EXEC', n, '=', execs[n], '\n') end
-    end
-    if cmd ~= nil then f:write('CMDLINE=', clean(cmd), '\n') end
-    if pools and poolKeys then
-        for _, k in ipairs(poolKeys) do f:write(k, '=', pools[k], '\n') end
-    end
-    if lays and layKeys then
-        for _, k in ipairs(layKeys) do f:write(k, '=', lays[k], '\n') end
-    end
-    if sel ~= nil then f:write('SEL=', sel, '\n') end
-    attrs = attrs or {}
-    f:write('ATTRN=', #attrs, '\n')
-    for i, a in ipairs(attrs) do
-        f:write('ATTR', i, '=', a[1], '|', a[2], '|', a[3], '|', a[4] or '', '|', a[5] or '', '|', a[6] or '', '\n')
-    end
+    for _, kv in ipairs(stateLines(...)) do f:write(kv[1], '=', kv[2], '\n') end
     f:write('END\n')
     f:close()
     return true
 end
+-- ===== tryb sieciowy (konsola): tylko zmiany, paczkami przez SendOSC "/ma3wing,s,..." =====
+local netLast = {}
+local function enc(s) return (s:gsub('[%%,";\r\n\\]', function(c) return string.format('%%%02X', c:byte()) end)) end
+local function netSendRaw(payload)
+    local ok, r = pcall(Cmd, string.format('SendOSC %d "/ma3wing,s,%s"', OSC_LINE, payload))
+    return ok
+end
+local function netSend(L)
+    local chunk, sent = {}, 0
+    local size = 0
+    local function flush()
+        if #chunk == 0 then return end
+        netSendRaw(table.concat(chunk, '%0A'))
+        chunk, size = {}, 0
+        sent = sent + 1
+        if sent % 15 == 0 then coroutine.yield(0.02) end   -- nie zatykaj konsoli przy pierwszym wysylaniu
+    end
+    for _, kv in ipairs(L) do
+        local k, v = kv[1], kv[2]
+        if k:sub(1, 5) ~= '/Page' and k ~= 'CMDLINE' and netLast[k] ~= v then   -- fadery wysyla sama konsola (OSC Send)
+            netLast[k] = v
+            local item = enc(k .. '=' .. v)
+            if size + #item > 700 then flush() end
+            chunk[#chunk + 1] = item; size = size + #item + 3
+        end
+    end
+    flush()
+    return sent
+end
 
 local function run()
     -- diagnostyka: czego brakuje w tej wersji MA
-    if type(io) ~= 'table' or type(io.open) ~= 'function' then say('BLAD: brak biblioteki io (zapis plikow zablokowany)'); return end
     if type(GetExecutor) ~= 'function' then say('BLAD: brak funkcji GetExecutor'); return end
     if type(coroutine) ~= 'table' or type(coroutine.yield) ~= 'function' then say('BLAD: brak coroutine.yield'); return end
 
@@ -459,10 +488,19 @@ local function run()
     MA3WingToken = token          -- kazde klikniecie przejmuje sterowanie; starsza petla sama sie konczy
 
     local file = stateFile()
-    local okw, errw = writeState(file, pageNumber(), {})
-    if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
-
-    say('start (v17), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    local net = FORCE_NET
+    if not net then
+        local okw, errw = false, 'brak biblioteki io'
+        if type(io) == 'table' and type(io.open) == 'function' then okw, errw = writeState(file, pageNumber(), {}) end
+        if not okw then net = true; say('nie moge zapisac pliku (' .. tostring(errw) .. ') - przechodze na tryb sieciowy') end
+    end
+    if net then
+        netLast = {}
+        netSendRaw(enc('HELLO=1'))
+        say('start (v18), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
+    else
+        say('start (v18), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    end
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
@@ -481,7 +519,7 @@ local function run()
             local s = selectionList()
             if s ~= sel then sel, changed = s, true end
         end
-        mirrorTick()
+        if not net then mirrorTick() end
         cmd = cmdLine()
         if cmd ~= lastCmd then lastCmd, changed = cmd, true end
         if tick % 50 == 3 then                      -- layouty co ~5 s
@@ -511,7 +549,13 @@ local function run()
             end
         end
         if changed then
-            local ok, err = writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel)
+            local ok, err
+            if net then
+                ok = true
+                netSend(stateLines(page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel))
+            else
+                ok, err = writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel)
+            end
             if ok then
                 last, lastPage = vals, page
             else

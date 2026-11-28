@@ -10,6 +10,25 @@ $ShortcutsOn  = $true         # czy w onPC sa wlaczone skroty klawiszowe (ShCuts
                               # na czas wpisywania je wylacza (F10) i potem wlacza z powrotem.
 $FeedbackPorts = @(9000, 9100, 19000)   # porty feedbacku z onPC (Send) - pierwszy wolny; @() = wylacz
 # ======================
+# Plik MA3Wing-ustawienia.txt obok skryptu nadpisuje powyzsze (np. praca z konsola grandMA3):
+#   KONSOLA=192.168.1.10     (IP konsoli; 127.0.0.1 = onPC na tym laptopie)
+#   PORT_OSC=8000
+#   PREFIX=gma3
+$SettingsFile = Join-Path $PSScriptRoot 'MA3Wing-ustawienia.txt'
+if (-not (Test-Path $SettingsFile)) {
+    @('# MA3 Wing - ustawienia',
+      '# KONSOLA: 127.0.0.1 = grandMA3 onPC na tym laptopie; dla konsoli wpisz jej adres IP, np. 192.168.1.10',
+      'KONSOLA=127.0.0.1',
+      'PORT_OSC=8000',
+      'PREFIX=gma3') | Set-Content -Path $SettingsFile -Encoding ASCII
+}
+foreach ($l in (Get-Content $SettingsFile)) {
+    if ($l -match '^\s*KONSOLA\s*=\s*(\S+)') { $ConsoleIP = $Matches[1] }
+    elseif ($l -match '^\s*PORT_OSC\s*=\s*(\d+)') { $OscPort = [int]$Matches[1] }
+    elseif ($l -match '^\s*PREFIX\s*=\s*(\S*)') { $Prefix = $Matches[1] }
+}
+$IsConsole = ($ConsoleIP -ne '127.0.0.1' -and $ConsoleIP -ne 'localhost')
+$CacheFile = Join-Path $PSScriptRoot 'MA3Wing-show.txt'   # ostatnie dane show (nazwy, pule, layouty) - dla konsoli / bez wtyczki
 
 $ErrorActionPreference = 'Stop'
 
@@ -155,6 +174,10 @@ Write-Host '  MA3 Wing dziala.' -ForegroundColor Green
 Write-Host '  Na iPadzie (ta sama siec Wi-Fi) otworz w Safari:' -ForegroundColor White
 foreach ($ip in $ips) { Write-Host "     http://${ip}:$HttpPort" -ForegroundColor Cyan }
 Write-Host "  OSC -> ${ConsoleIP}:$OscPort  prefix '/$Prefix'" -ForegroundColor DarkGray
+if ($IsConsole) {
+    Write-Host "  TRYB KONSOLI: grandMA3 pod $ConsoleIP" -ForegroundColor Yellow
+    Write-Host "  W konsoli (Menu - In & Out - OSC): linia z adresem tego laptopa, port $($FeedbackPorts[0]), Send=Yes, Receive=Yes, Receive Command=Yes, prefix '$Prefix'" -ForegroundColor Yellow
+}
 if ($udpIn) { Write-Host "  Feedback z onPC: ustaw w onPC linie OSC z Send na porcie $FeedbackPort (IP 127.0.0.1)" -ForegroundColor DarkGray }
 else { Write-Host "  Feedback wylaczony (porty zajete)." -ForegroundColor Yellow }
 Write-Host '  Ponizej widac kazda wiadomosc. Aby zakonczyc, zamknij to okno.' -ForegroundColor DarkGray
@@ -165,6 +188,39 @@ $cancel = [Threading.CancellationToken]::None
 $lastFaderLog = [DateTime]::MinValue
 $lastFbLog = @{}
 $fbCache = [ordered]@{}   # ostatnie pozycje faderow z MA, dla nowo podlaczonych iPadow
+$cacheDirty = $false; $lastCacheSave = [DateTime]::Now
+if (Test-Path $CacheFile) {
+    try {
+        foreach ($l in [IO.File]::ReadAllLines($CacheFile)) { $i = $l.IndexOf('='); if ($i -gt 0) { $fbCache[$l.Substring(0, $i)] = $l.Substring($i + 1) } }
+        Write-Host "  wczytano zapamietane dane show ($($fbCache.Count) pozycji) - layouty, pule, nazwy" -ForegroundColor DarkGray
+    } catch {}
+}
+function Save-Cache {
+    if (-not $script:cacheDirty) { return }
+    if (([DateTime]::Now - $script:lastCacheSave).TotalSeconds -lt 10) { return }
+    $script:cacheDirty = $false; $script:lastCacheSave = [DateTime]::Now
+    try {
+        $sb = New-Object System.Text.StringBuilder
+        foreach ($k in $script:fbCache.Keys) { if ($k -notmatch '^/Page') { [void]$sb.Append($k).Append('=').Append($script:fbCache[$k]).Append("`r`n") } }
+        [IO.File]::WriteAllText($script:CacheFile, $sb.ToString(), (New-Object Text.UTF8Encoding $false))
+    } catch {}
+}
+# dane z wtyczki przez siec (konsola): OSC /ma3wing ,s "KLUCZ=WARTOSC%0AKLUCZ=WARTOSC..." (%xx = znaki specjalne)
+function Read-NetState([string]$payload) {
+    if (-not $script:netSeen) { $script:netSeen = $true; Write-Host "<- wtyczka MA3Wing przez siec (SendOSC) dziala" -ForegroundColor Green }
+    $batch = New-Object System.Text.StringBuilder; $n = 0
+    foreach ($l in ([Uri]::UnescapeDataString($payload) -split "`n")) {
+        $i = $l.IndexOf('='); if ($i -le 0) { continue }
+        $k = $l.Substring(0, $i); $v = $l.Substring($i + 1)
+        if ($k -eq 'HELLO') { continue }
+        if ($script:fbCache[$k] -ne $v) {
+            $script:fbCache[$k] = $v; $n++
+            if ($batch.Length) { [void]$batch.Append("`n") }
+            [void]$batch.Append(("fb`t{0}`t{1}" -f $k, $v))
+        }
+    }
+    if ($batch.Length) { Send-ToClients $batch.ToString(); $script:cacheDirty = $true }
+}
 $StateFile = Join-Path $env:TEMP 'MA3Wing-faders.txt'
 $CmdLineFile = Join-Path $env:TEMP 'MA3Wing-cmdline.txt'   # linia komend z iPada, czyta ja wtyczka
 try { [IO.File]::WriteAllText($CmdLineFile, '', (New-Object Text.UTF8Encoding $false)) } catch {}   # zapisuje go wtyczka MA3Wing.lua w onPC
@@ -191,7 +247,7 @@ function Read-StateFile {
             $n++
         }
     }
-    if ($batch.Length) { Send-ToClients $batch.ToString() }
+    if ($batch.Length) { Send-ToClients $batch.ToString(); $script:cacheDirty = $true }
     $now = [DateTime]::Now
     if ($n -gt 0 -and ($now - $script:lastStateLog).TotalMilliseconds -gt 1000) {
         $script:lastStateLog = $now
@@ -302,6 +358,7 @@ foreach ($u in $udpIns) { $u.Task = $u.Sock.ReceiveAsync() }
 try {
     while ($true) {
         Read-StateFile
+        Save-Cache
         foreach ($c in @($clients)) {
             if ($c.Dead) {
                 try { $c.Ws.Abort() } catch {}
@@ -363,6 +420,7 @@ try {
                     $a = $m[0]; $v = $m[1]
                     $local = $a
                     if ($Prefix -and $local.StartsWith('/' + $Prefix + '/')) { $local = $local.Substring($Prefix.Length + 1) }
+                    if ($local -eq '/ma3wing') { Read-NetState $v; $u.Task = $u.Sock.ReceiveAsync(); continue }
                     if ($local -match '^/Page\d+/Fader\d+$') { $fbCache[$local] = $v }
                     if ($local -match '^/Page\d+/Fader\d+$') { Send-ToClients ("fb`t{0}`t{1}" -f $local, $v) }
                     $now = [DateTime]::Now

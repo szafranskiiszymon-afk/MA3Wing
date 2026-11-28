@@ -51,3 +51,19 @@ Zakończenie: zamknij okienko.
    c) Od tej chwili fadery na iPadzie pokazują pozycje z MA, także zaraz po otwarciu strony.
    d) Ponowne kliknięcie pluginu zapisuje wszystkie pozycje jeszcze raz.
    Wtyczka nie używa SendOSC – zapisuje mały plik w folderze TEMP, który czyta skrypt.
+
+=== PRACA Z KONSOLA grandMA3 (zamiast onPC) ===
+1. Laptop z mostem podlacz do tej samej sieci co konsola (np. kablem do switcha FOH),
+   iPad laczy sie z laptopem jak zwykle (Wi-Fi).
+2. W pliku MA3Wing-ustawienia.txt (obok skryptu) wpisz IP konsoli, np.:  KONSOLA=192.168.1.10
+   (127.0.0.1 = onPC na tym laptopie). Uruchom most ponownie.
+3. W konsoli: Menu - In & Out - OSC - dodaj linie:
+     Destination IP = adres laptopa,  Port = 9000,  Prefix = gma3
+     Send = Yes, Receive = Yes, Receive Command = Yes, Enable Input/Output = Yes
+   Zapamietaj numer tej linii (np. 1).
+4. Wgraj do konsoli wtyczke MA3Wing.lua i uruchom ja. Na konsoli sama przejdzie w TRYB SIECIOWY
+   i wysle dane przez SendOSC. Jesli linia OSC z punktu 3 ma inny numer niz 1, zmien w wtyczce
+   OSC_LINE = 1 na ten numer.
+5. W oknie mostu powinno pojawic sie: "wtyczka MA3Wing przez siec (SendOSC) dziala".
+   Jesli nie - fadery, klawisze i komendy i tak dzialaja, a layouty / pule / nazwy iPad bierze
+   z ostatniej sesji z onPC (plik MA3Wing-show.txt). Zaznaczenie i channel sety beda wtedy niedostepne.
