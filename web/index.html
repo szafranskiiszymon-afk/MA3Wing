@@ -286,13 +286,13 @@ key(top,'◐','height:34px;width:34px;flex:none',()=>{theme=isMA()?'classic':'ma
 showCmd();
 
 // ---- body
-const body=el('div','flex:1;min-height:0;background:#1a1a1d;border-radius:14px;padding:16px;box-sizing:border-box;display:flex;gap:18px',stage);body.classList.add('mabody');
-const U=38,GP=4;
+const body=el('div','flex:1;min-height:0;background:#1a1a1d;border-radius:14px;padding:12px;box-sizing:border-box;display:flex;gap:12px',stage);body.classList.add('mabody');
+const U=35,GP=4;
 
 // ===== executor section (8/7: knobs + keys 401/301, 6: faders 201, 5: keys 201/101)
-const ex=el('div','width:430px;flex:none;display:flex;gap:16px;overflow:hidden',body);
+const ex=el('div','width:470px;flex:none;display:flex;gap:12px;overflow:hidden',body);
 [[1,2,3,4,5],[6,7,8,9,10]].forEach(block=>{
-  const b=el('div','flex:1 1 0;min-width:0;display:flex;gap:4px',ex);
+  const b=el('div','flex:1 1 0;min-width:0;display:flex;gap:3px',ex);
   block.forEach(i=>{
     const c=el('div','flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:5px',b);
     const fx=200+i;
@@ -312,7 +312,7 @@ const ex=el('div','width:430px;flex:none;display:flex;gap:16px;overflow:hidden',
 });
 
 // ===== master section (Prev/Next cluster + 1: two faders, Pause / Go- / Go+)
-const ms=el('div','width:104px;flex:none;display:flex;flex-direction:column;gap:6px',body);
+const ms=el('div','width:96px;flex:none;display:flex;flex-direction:column;gap:6px',body);
 const mg=el('div','display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px',ms);
 [['Prev','Previous'],['Next','Next'],['Set','Set'],['Up','Up'],['SelFix','SelFix'],['Down','Down']].forEach(a=>{
   if(a[0]==='Set')key(mg,'Set','height:36px',()=>cmdSend('Set Selection Property "Active"'));   // console Set key: toggles MAtricks (back to whole selection after Next/Prev)
@@ -830,7 +830,7 @@ function showTab(t){
   if(lay){                      // encoders to the bottom strip, command section into the drawer
     sC.appendChild(fgRow);sC.appendChild(er);dBody.appendChild(cs);body.style.padding='10px 30px 10px 10px';stage.classList.add('vmode');er.style.height='100px';
   } else {
-    cs.insertBefore(er,cs.firstChild);cs.insertBefore(fgRow,er);body.appendChild(cs);body.style.padding='16px';stage.classList.remove('vmode');er.style.height='104px';
+    cs.insertBefore(er,cs.firstChild);cs.insertBefore(fgRow,er);body.appendChild(cs);body.style.padding='12px';stage.classList.remove('vmode');er.style.height='104px';
     setDrawer(false);
   }
   setDrawer(false);
