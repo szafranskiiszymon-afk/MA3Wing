@@ -1,10 +1,7 @@
--- MA3 Wing Dump: zapisuje do pliku tekstowego wszystko, co MA wie o atrybutach
--- PIERWSZEGO zaznaczonego urzadzenia: UIChannel, Attribute, Logical channel,
--- Channel functions i Channel sets (ze wszystkimi wlasciwosciami).
--- Uzycie: zaznacz jedno urzadzenie (np. Fixture 101), kliknij plugin, przeslij plik.
+-- MA3 Wing Dump v3: co MA wie o presetach Gobo (pula 3) - obrazek, zawartosc, typy urzadzen.
+-- Uzycie: kliknij plugin (nic nie trzeba zaznaczac), przeslij plik MA3Wing-presety.txt z folderu MA3.
 
 local function say(t) if Printf then Printf('MA3 Wing Dump: ' .. t) else print('MA3 Wing Dump: ' .. t) end end
-
 local function isHandle(v) return v ~= nil and (type(v) == 'userdata' or (type(v) == 'table' and v.Children ~= nil)) end
 
 local function outPath()
@@ -12,13 +9,12 @@ local function outPath()
     if os and os.getenv then
         local up = os.getenv('USERPROFILE')
         if up then
-            tries[#tries + 1] = up .. '\\OneDrive\\Desktop\\MA3\\MA3Wing-gobo.txt'
-            tries[#tries + 1] = up .. '\\Desktop\\MA3Wing-gobo.txt'
+            tries[#tries + 1] = up .. '\\OneDrive\\Desktop\\MA3\\MA3Wing-presety.txt'
+            tries[#tries + 1] = up .. '\\Desktop\\MA3Wing-presety.txt'
         end
         local t = os.getenv('TEMP') or os.getenv('TMP')
-        if t then tries[#tries + 1] = t .. '\\MA3Wing-gobo.txt' end
+        if t then tries[#tries + 1] = t .. '\\MA3Wing-presety.txt' end
     end
-    tries[#tries + 1] = 'C:\\Windows\\Temp\\MA3Wing-channelsets.txt'
     for _, p in ipairs(tries) do
         local f = io.open(p, 'w')
         if f then return f, p end
@@ -35,8 +31,6 @@ local function str(v)
     end
     return tostring(v)
 end
-
--- wszystkie wlasciwosci obiektu MA (PropertyCount/PropertyName), w jednej linii
 local function props(h)
     local parts = {}
     local okc, cnt = pcall(function() return h:PropertyCount() end)
@@ -49,114 +43,43 @@ local function props(h)
                 parts[#parts + 1] = tostring(name) .. '=' .. str(okv and val or nil)
             end
         end
-    else
-        for _, k in ipairs({'name', 'no', 'dmxfrom', 'dmxto', 'physfrom', 'physto', 'attribute', 'wheel', 'default'}) do
-            local ok, v = pcall(function() return h[k] end)
-            if ok and v ~= nil then parts[#parts + 1] = k .. '=' .. str(v) end
-        end
     end
     return table.concat(parts, '  ')
 end
-
-local function class(h)
-    local ok, c = pcall(function() return h:GetClass() end)
-    return ok and tostring(c) or '?'
-end
-
-local function children(h)
-    local ok, c = pcall(function() return h:Children() end)
-    if ok and type(c) == 'table' then return c end
-    return {}
-end
+local function class(h) local ok, c = pcall(function() return h:GetClass() end); return ok and tostring(c) or '?' end
+local function children(h) local ok, c = pcall(function() return h:Children() end); if ok and type(c) == 'table' then return c end; return {} end
 
 local lines = {}
 local function w(t) lines[#lines + 1] = t end
-
-local function tree(h, ind, depth, maxDepth)
+local function tree(h, ind, depth, maxDepth, maxKids)
     w(ind .. '[' .. class(h) .. '] ' .. props(h))
     if depth >= maxDepth then return end
-    for _, c in ipairs(children(h)) do tree(c, ind .. '    ', depth + 1, maxDepth) end
+    local kids = children(h)
+    for i, c in ipairs(kids) do
+        if i > maxKids then w(ind .. '    ... (' .. #kids .. ' dzieci)'); break end
+        tree(c, ind .. '    ', depth + 1, maxDepth, maxKids)
+    end
 end
 
 local function run()
     local okv, ver = pcall(Version)
-    w('MA3 Wing Dump v2  ' .. os.date('%Y-%m-%d %H:%M:%S') .. '  wersja MA: ' .. (okv and tostring(ver) or '?'))
-    local ok, sf = pcall(SelectionFirst)
-    if not ok or sf == nil then say('BLAD: nic nie jest zaznaczone. Zaznacz jedno urzadzenie i uruchom ponownie.'); return end
-    w('SelectionFirst = ' .. tostring(sf))
-
-    local oks, sub = pcall(GetSubfixture, sf)
-    if oks and isHandle(sub) then
-        w(''); w('== Subfixture'); w(props(sub))
-        local okt, ft = pcall(function() return sub.fixturetype end)
-        if okt and isHandle(ft) then w('fixture type: ' .. str(ft)) end
+    w('MA3 Wing Dump v3 (presety Gobo)  ' .. os.date('%Y-%m-%d %H:%M:%S') .. '  wersja MA: ' .. (okv and tostring(ver) or '?'))
+    local okl, list = pcall(ObjectList, 'Preset 3.1 Thru 3.1000')
+    if not okl or type(list) ~= 'table' then list = {} end
+    w('== Pula 3: ' .. #list .. ' presetow')
+    for _, p in ipairs(list) do w(props(p)) end
+    local want = { [2] = true, [3] = true, [145] = true, [146] = true, [180] = true, [181] = true, [201] = true, [202] = true, [216] = true }
+    local picks = {}
+    for _, p in ipairs(list) do
+        local okn, no = pcall(function() return p.no end)
+        no = okn and tonumber(no) or nil
+        if no and want[no] then picks[#picks + 1] = p end
     end
-
-    local okc, chans = pcall(GetUIChannels, sf)
-    if not okc or type(chans) ~= 'table' then say('BLAD: GetUIChannels nie dziala'); return end
-    w(''); w('== UI channels: ' .. #chans)
-
-    local seenLC = {}
-    for idx, ui in ipairs(chans) do
-        w(''); w('---------- UIChannel ' .. tostring(ui) .. ' (#' .. idx .. ')')
-        local oka, a = pcall(GetAttributeByUIChannel, ui)
-        if oka and isHandle(a) then w('Attribute: ' .. props(a)) end
-        local oku, u = pcall(GetUIChannel, ui)
-        local lc = nil
-        if oku and u ~= nil then
-            if type(u) == 'table' then
-                local keys = {}
-                for k, v in pairs(u) do keys[#keys + 1] = tostring(k) .. '=' .. str(v) end
-                table.sort(keys)
-                w('GetUIChannel: ' .. table.concat(keys, '  '))
-                for _, k in ipairs({'logical_channel', 'logicalchannel', 'LogicalChannel'}) do
-                    if isHandle(u[k]) then lc = u[k]; break end
-                end
-            elseif isHandle(u) then
-                w('GetUIChannel (obiekt): ' .. props(u))
-                local okl, l = pcall(function() return u.logicalchannel or u.logical_channel end)
-                if okl and isHandle(l) then lc = l end
-            end
-        else
-            w('GetUIChannel: brak')
-        end
-        if lc ~= nil then
-            local key = str(lc)
-            if seenLC[key] then
-                w('Logical channel ' .. key .. ' (juz opisany wyzej)')
-            else
-                seenLC[key] = true
-                w('Logical channel -> channel functions -> channel sets:')
-                tree(lc, '  ', 0, 3)
-            end
-        else
-            w('Logical channel: NIE ZNALEZIONY')
-        end
+    if #picks == 0 then for i = 1, math.min(4, #list) do picks[#picks + 1] = list[i] end end
+    for _, p in ipairs(picks) do
+        w(''); w('---------- ' .. str(p))
+        tree(p, '  ', 0, 4, 12)
     end
-
-    -- koła (gobo / kolor / pryzmat) - sloty i ewentualne obrazki
-    w(''); w('== KOLA (Wheel) - sloty, obrazki')
-    local seenW = {}
-    for _, ui in ipairs(chans) do
-        local oku, u = pcall(GetUIChannel, ui)
-        local lc = (oku and type(u) == 'table') and (u.logical_channel or u.logicalchannel) or nil
-        if isHandle(lc) then
-            for _, cf in ipairs(children(lc)) do
-                local okw, wh = pcall(function() return cf.wheel end)
-                if okw and isHandle(wh) then
-                    local key = str(wh)
-                    if not seenW[key] then
-                        seenW[key] = true
-                        w(''); w('---------- Wheel ' .. key .. '  (funkcja ' .. str(cf) .. ')')
-                        tree(wh, '  ', 0, 3)
-                    end
-                end
-            end
-        end
-    end
-    local okg, gp = pcall(function() return ShowData().MediaPools end)
-    if okg and isHandle(gp) then w(''); w('== MediaPools'); tree(gp, '  ', 0, 2) end
-
     local f, path = outPath()
     if not f then say('BLAD: nie moge zapisac pliku'); return end
     f:write(table.concat(lines, '\r\n'), '\r\n')
