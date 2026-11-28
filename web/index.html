@@ -673,6 +673,33 @@ function applyToType(t,attr,dmx){
   cmdSend('ClearSelection ; Fixture '+fixList(t.fids)+' ; '+cmd+' ; ClearSelection ; Fixture '+fixList(all));
   layInternal=false;
 }
+// simple drawn icons by preset name (own pictograms, used when MA has no picture)
+function fxIcon(name,size){
+  const n=String(name||'').toLowerCase(),Y='#ffc71a',W='#e8e8e8';let g='';
+  const arrowR='<path d="M30 25 L38 25 M34 21 L38 25 L34 29" stroke="'+Y+'" stroke-width="2.5" fill="none"/>';
+  const arrowL='<path d="M20 25 L12 25 M16 21 L12 25 L16 29" stroke="'+Y+'" stroke-width="2.5" fill="none"/>';
+  if(/no fx|^off|^---$/.test(n))g='<circle cx="25" cy="25" r="14" stroke="#888" stroke-width="2.5" fill="none"/><path d="M15 35 L35 15" stroke="#888" stroke-width="2.5"/>';
+  else if(/vertical line/.test(n))g='<rect x="22" y="9" width="6" height="32" fill="'+W+'"/>'+(/<--|<-/.test(n)&&!/<-->/.test(n)?arrowL:'')+(/-->/.test(n)&&!/<-->/.test(n)?arrowR:'')+(/<-->|bounce|naunce/.test(n)?arrowL+arrowR:'');
+  else if(/horizontal line/.test(n))g='<rect x="9" y="22" width="32" height="6" fill="'+W+'"/>'+(/up\/dwn|bounce/.test(n)?'<path d="M25 18 L25 10 M21 14 L25 10 L29 14" stroke="'+Y+'" stroke-width="2.5" fill="none"/>':'')+(/dwn\/up|bounce/.test(n)?'<path d="M25 32 L25 40 M21 36 L25 40 L29 36" stroke="'+Y+'" stroke-width="2.5" fill="none"/>':'');
+  else if(/^h\s|>-<|<->/.test(n)&&!/block/.test(n))g='<rect x="9" y="22" width="32" height="6" fill="'+W+'"/>'+(/>-</.test(n)?'<path d="M10 14 L18 14 M14 10 L18 14 L14 18 M40 14 L32 14 M36 10 L32 14 L36 18" stroke="'+Y+'" stroke-width="2.5" fill="none"/>':'<path d="M22 14 L12 14 M16 10 L12 14 L16 18 M28 14 L38 14 M34 10 L38 14 L34 18" stroke="'+Y+'" stroke-width="2.5" fill="none"/>');
+  else if(/block/.test(n))g='<rect x="10" y="14" width="9" height="22" fill="'+W+'"/><rect x="21" y="14" width="9" height="22" fill="'+W+'" opacity=".55"/><rect x="32" y="14" width="9" height="22" fill="'+W+'" opacity=".25"/>'+(/<-|>-</.test(n)?'':'');
+  else if(/random|lonely/.test(n))g=[[14,15],[33,12],[22,27],[38,33],[12,36],[28,40],[18,22]].map((p,i)=>'<rect x="'+p[0]+'" y="'+p[1]+'" width="5" height="5" fill="'+(i===2?Y:W)+'" opacity="'+(i===2?1:.45)+'"/>').join('');
+  else if(/halves vertical/.test(n))g='<rect x="10" y="10" width="14" height="30" fill="'+W+'"/><rect x="26" y="10" width="14" height="30" fill="'+W+'" opacity=".3"/>';
+  else if(/halves horizontal/.test(n))g='<rect x="10" y="10" width="30" height="14" fill="'+W+'"/><rect x="10" y="26" width="30" height="14" fill="'+W+'" opacity=".3"/>';
+  else if(/quater|quarter/.test(n))g='<rect x="10" y="10" width="14" height="14" fill="'+W+'"/><rect x="26" y="10" width="14" height="14" fill="'+W+'" opacity=".6"/><rect x="26" y="26" width="14" height="14" fill="'+W+'" opacity=".35"/><rect x="10" y="26" width="14" height="14" fill="'+W+'" opacity=".15"/>';
+  else if(/pixel (counter)?clockwise/.test(n))g=[0,1,2,3,4,5,6,7].map(i=>{const a=i/8*6.283;return '<circle cx="'+(25+13*Math.cos(a))+'" cy="'+(25+13*Math.sin(a))+'" r="3.2" fill="'+W+'" opacity="'+(0.2+i*0.1)+'"/>';}).join('')+'<path d="'+(/counter/.test(n)?'M31 25 A6 6 0 1 0 25 31':'M19 25 A6 6 0 1 1 25 31')+'" stroke="'+Y+'" stroke-width="2.5" fill="none"/>';
+  else if(/wave/.test(n))g='<path d="M8 25 Q14 13 20 25 T32 25 T44 25" stroke="'+W+'" stroke-width="4" fill="none"/>';
+  else if(/stripe/.test(n))g=[10,18,26,34].map((x,i)=>'<rect x="'+x+'" y="10" width="4" height="30" fill="'+W+'" opacity="'+(i%2?.35:1)+'"/>').join('');
+  else if(/fan/.test(n))g=[-50,-25,0,25,50].map(d=>{const a=(d-90)*Math.PI/180;return '<path d="M25 40 L'+(25+28*Math.cos(a))+' '+(40+28*Math.sin(a))+'" stroke="'+W+'" stroke-width="3"/>';}).join('');
+  else if(/sequence|seqence|all in/.test(n))g=[10,18,26,34].map((x,i)=>'<rect x="'+x+'" y="20" width="6" height="10" fill="'+W+'" opacity="'+(0.25+i*0.25)+'"/>').join('');
+  else if(/duck/.test(n))g=[[10,14],[22,22],[34,30],[16,34],[30,12]].map(p=>'<circle cx="'+p[0]+'" cy="'+p[1]+'" r="4" fill="'+W+'"/>').join('');
+  else if(/^stop$/.test(n))g='<rect x="15" y="15" width="20" height="20" fill="'+W+'"/>';
+  else if(/^[<>]+$/.test(n.trim())){const c=Math.min(4,n.trim().length),dir=n.trim()[0]==='>'?1:-1;
+    for(let i=0;i<c;i++){const x=25+(i-(c-1)/2)*7;g+='<path d="M'+(x-3*dir)+' 17 L'+(x+3*dir)+' 25 L'+(x-3*dir)+' 33" stroke="'+W+'" stroke-width="3" fill="none"/>';}}
+  else if(/dimfade|dim fade/.test(n))g='<defs><linearGradient id="df" x1="0" x2="1"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="'+W+'"/></linearGradient></defs><rect x="9" y="17" width="32" height="16" fill="url(#df)" stroke="#666"/>';
+  if(!g)return '';
+  return '<svg viewBox="0 0 50 50" style="width:'+size+'px;height:'+size+'px;background:#111;border-radius:8px">'+g+'</svg>';
+}
 // Your gobo presets (pool 3) with picture + fixture type from the preset (plugin v22+: PINF3.n=type|fid|attr|img|channelset)
 let goboKind='all';
 function goboKindOf(n){const a=(PINF[n]||[])[2]||'';const m=/^Gobo(\d)$/i.exec(a);
@@ -712,10 +739,10 @@ function renderGobo(){
     const generic=!it.name||/^Preset \d+$/i.test(it.name);
     const label=generic&&setName&&!/^no feature$/i.test(setName)?setName:(it.name||'Preset 3.'+n);
     const isOpen=/open/i.test(label)||/^open$/i.test(setName);
-    const icon=setIcon({img:img,name:isOpen?'open':label},44)||'<span style="display:inline-block;width:44px;height:44px"></span>';
+    const icon=setIcon({img:img,name:isOpen?'open':label},44)||fxIcon(it.name||label,44)||fxIcon(setName,44)||'<span style="display:inline-block;width:44px;height:44px"></span>';
     const b=tapKey(grid,'<span style="position:absolute;left:4px;top:2px;font-size:10px;opacity:.85">3.'+n+'</span>'+
       '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:3px">'+icon+
-      '<span style="font-size:10px;line-height:1.1;max-height:2.2em;overflow:hidden;text-align:center">'+esc(label)+'</span></div>',
+      '<span style="font-size:10px;line-height:1.1;max-height:2.2em;overflow:hidden;text-align:center;white-space:normal;word-break:break-word;max-width:100%;padding:0 3px;box-sizing:border-box">'+esc(label.replace(/\s+select$/i,''))+'</span></div>',
       'height:auto;min-height:0;position:relative;padding-top:10px'+(it.col?';background:'+shade(it.col,0.42)+';box-shadow:inset 0 3px 0 '+it.col:''),
       ()=>objTap('Preset 3.'+n,'At Preset 3.'+n));
     b.title=(inf[0]||'')+' '+(inf[2]||'');
