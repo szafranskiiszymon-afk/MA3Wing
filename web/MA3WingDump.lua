@@ -72,7 +72,7 @@ end
 
 local function run()
     local okv, ver = pcall(Version)
-    w('MA3 Wing Dump v3 (presety Gobo)  ' .. os.date('%Y-%m-%d %H:%M:%S') .. '  wersja MA: ' .. (okv and tostring(ver) or '?'))
+    w('MA3 Wing Dump v4 (presety Gobo)  ' .. os.date('%Y-%m-%d %H:%M:%S') .. '  wersja MA: ' .. (okv and tostring(ver) or '?'))
     lines = {}
     local okl, list = pcall(ObjectList, 'Preset 3.1 Thru 3.1000')
     if not okl or type(list) ~= 'table' then list = {} end
@@ -89,7 +89,7 @@ local function run()
     end
     w('== Pula 3: ' .. #list .. ' presetow')
     for _, p in ipairs(list) do w(props(p)) end
-    local want = { [2] = true, [3] = true, [145] = true, [146] = true, [180] = true, [181] = true, [201] = true, [202] = true, [216] = true }
+    local want = { [2] = true, [3] = true, [145] = true, [146] = true, [180] = true, [181] = true, [201] = true, [202] = true, [216] = true, [217] = true }
     local picks = {}
     for _, p in ipairs(list) do
         local okn, no = pcall(function() return p.no end)
@@ -97,9 +97,41 @@ local function run()
         if no and want[no] then picks[#picks + 1] = p end
     end
     if #picks == 0 then for i = 1, math.min(4, #list) do picks[#picks + 1] = list[i] end end
+    -- zawartosc presetow: SELECTIONDATA, DEPENDENCIES i GetPresetData (wartosci per urzadzenie / atrybut)
+    local function dumpTable(t, ind, depth, budget)
+        if budget.n <= 0 then return end
+        if type(t) ~= 'table' then w(ind .. str(t)); budget.n = budget.n - 1; return end
+        local keys = {}
+        for k, _ in pairs(t) do keys[#keys + 1] = k end
+        table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+        for i, k in ipairs(keys) do
+            if budget.n <= 0 then w(ind .. '...'); return end
+            if i > 40 then w(ind .. '... (' .. #keys .. ' kluczy)'); return end
+            local v = t[k]
+            if type(v) == 'table' and depth > 0 then
+                w(ind .. tostring(k) .. ' = {'); budget.n = budget.n - 1
+                dumpTable(v, ind .. '  ', depth - 1, budget)
+                w(ind .. '}')
+            else
+                w(ind .. tostring(k) .. ' = ' .. str(v)); budget.n = budget.n - 1
+            end
+        end
+    end
     for _, p in ipairs(picks) do
         w(''); w('---------- ' .. str(p))
-        tree(p, '  ', 0, 4, 12)
+        for _, key in ipairs({'SELECTIONDATA', 'DEPENDENCIES'}) do
+            local v = get(p, key)
+            w('  ' .. key .. ':'); dumpTable(v, '    ', 4, {n = 120})
+        end
+        if type(GetPresetData) == 'function' then
+            for _, args in ipairs({{}, {false, true}}) do
+                local ok, d = pcall(GetPresetData, p, table.unpack(args))
+                w('  GetPresetData(' .. table.concat((function() local s = {} for _, a in ipairs(args) do s[#s + 1] = tostring(a) end return s end)(), ',') .. '): ' .. (ok and '' or ('BLAD ' .. tostring(d))))
+                if ok then dumpTable(d, '    ', 5, {n = 250}) end
+            end
+        else
+            w('  (brak funkcji GetPresetData)')
+        end
     end
     local f, path = outPath()
     if not f then say('BLAD: nie moge zapisac pliku'); return end
