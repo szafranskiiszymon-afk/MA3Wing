@@ -406,6 +406,21 @@ local function setCmdLine(text)
         else say('podglad linii komend: wpisalem "' .. text .. '", MA pokazuje "' .. tostring(now) .. '"') end
     end
 end
+-- Esc z iPada: plik MA3Wing-esc.txt zmienia zawartosc -> naciskamy Esc w MA (zamyka okna / pop-upy)
+local lastEsc = nil
+local function escTick()
+    local dir = (os and os.getenv) and (os.getenv('TEMP') or os.getenv('TMP')) or nil
+    local f = io.open((dir or 'C:\\Windows\\Temp') .. '\\MA3Wing-esc.txt', 'r')
+    if not f then return end
+    local t = f:read('*a') or ''
+    f:close()
+    if lastEsc == nil then lastEsc = t; return end      -- stary stan z poprzedniej sesji - ignoruj
+    if t ~= lastEsc then
+        lastEsc = t
+        local k = clearKey or 'Escape'
+        pcall(Keyboard, 1, 'press', k); pcall(Keyboard, 1, 'release', k)
+    end
+end
 local lastMirror = nil
 local function mirrorTick()
     local f = io.open(cmdlineFile(), 'r')
@@ -497,9 +512,9 @@ local function run()
     if net then
         netLast = {}
         netSendRaw(enc('HELLO=1'))
-        say('start (v18), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
+        say('start (v19), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
     else
-        say('start (v18), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+        say('start (v19), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
     end
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
@@ -519,7 +534,7 @@ local function run()
             local s = selectionList()
             if s ~= sel then sel, changed = s, true end
         end
-        if not net then mirrorTick() end
+        if not net then mirrorTick(); escTick() end
         cmd = cmdLine()
         if cmd ~= lastCmd then lastCmd, changed = cmd, true end
         if tick % 50 == 3 then                      -- layouty co ~5 s

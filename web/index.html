@@ -200,7 +200,9 @@ function shade(hex,f){const v=parseInt(hex.slice(1),16);const r=(v>>16)&255,g=(v
   return 'rgb('+Math.round(r*f)+','+Math.round(g*f)+','+Math.round(b*f)+')';}
 function lum(hex){const v=parseInt(hex.slice(1),16);return (0.299*((v>>16)&255)+0.587*((v>>8)&255)+0.114*(v&255))/255;}
 function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+const EXNAME={};
 function applyExec(n,v){
+  const q0=String(v).split('|');EXNAME[n]=(q0[0]||'').trim();
   const e=EX[n];if(!e)return;
   const q=String(v).split('|');const name=(q[0]||'').trim();const col=/^#[0-9a-f]{6}$/i.test(q[1]||'')?q[1]:'';
   e.keys.forEach(k=>{
@@ -234,7 +236,9 @@ function completeWith(obj){
   // Assign/Copy/Move/Clone need "At" before the target: "Assign Group 5 At Exec 201"
   if(/^(Assign|Copy|Move|Clone)\b/i.test(c)&&/\d/.test(c)&&!/\b(At|Thru|\+|-)$/i.test(c))c+=' At';
   if(/^Store$/i.test(c)&&!S.storeOpt){const ex=storeTargetExists(obj);
-    if(ex){typeKey('{ESC}');openStoreOpts({cmd:c,obj:obj,label:ex.label});return;}}
+    if(ex){openStoreOpts({cmd:c,obj:obj,label:ex.label});return;}}
+  if(/^Assign\b.*\d/i.test(c)&&/^Exec \d+$/.test(obj)){const ex=storeTargetExists(obj);   // Assign ... onto an occupied executor
+    if(ex){openStoreOpts({cmd:c+(/\bAt$/i.test(c)?'':' At'),obj:obj,label:ex.label,assign:true});return;}}
   typeKey('{ESC}');cmdSend(c+' '+obj+(S.storeOpt&&/^Store\b/i.test(c)?' '+S.storeOpt:''));S.cmd='';S.storeOpt='';showCmd();
 }
 // Wing mode: nothing is typed into onPC (keyboard shortcuts may stay OFF). The command line is built
@@ -272,6 +276,11 @@ function soFlagStr(){return soFlags.join(' ');}
 function renderStoreOpts(){
   soTitle.innerHTML=soPending?'<span>Obiekt <b style="color:#ffc71a">'+esc(soPending.label)+'</b> już istnieje – co zrobić?</span>':'<span>Opcje <b style="color:#ffc71a">Store</b></span>';
   soMain.innerHTML='';
+  if(soPending&&soPending.assign){           // Assign: just confirm overwriting
+    soFl.style.display='none';soFl.previousSibling.style.display='none';
+    key(soMain,'Nadpisz<br><span class="sub" style="white-space:normal">'+esc(soPending.cmd+' '+soPending.obj)+'</span>','height:64px;grid-column:span 2;white-space:normal;font-size:15px;background:#a32a26;color:#fff',()=>chooseStoreOpt(''));
+    soFoot.innerHTML='';key(soFoot,'Anuluj','height:44px;flex:1;background:'+A+';color:'+AT,()=>closeStoreOpts(false));return;}
+  soFl.style.display='';soFl.previousSibling.style.display='';
   SOPTS.forEach(o=>{if(soPending&&o[0]==='/CreateSecondCue'&&!/^(Cue|Exec|Sequence)/i.test(soPending.obj))return;
     const on=!soPending&&S.storeOpt===o[0];
     key(soMain,o[1]+'<br><span class="sub" style="white-space:normal">'+o[2]+'</span>','height:64px;white-space:normal;font-size:15px;background:'+(on?'#ffc71a':'#a32a26')+';color:'+(on?'#1a1400':'#fff'),()=>chooseStoreOpt(o[0]));});
@@ -295,6 +304,7 @@ function chooseStoreOpt(o){
 function storeTargetExists(obj){
   let m=/^Preset (\d+)\.(\d+)$/.exec(obj);if(m){const P=POOLS['PRE'+m[1]+'.'];return P&&P.items[+m[2]]?{label:'Preset '+m[1]+'.'+m[2]+' "'+P.items[+m[2]].name+'"'}:null;}
   m=/^Group (\d+)$/.exec(obj);if(m){const it=POOLS.GRP.items[+m[1]];return it?{label:'Group '+m[1]+' "'+it.name+'"'}:null;}
+  m=/^Exec (\d+)$/.exec(obj);if(m){const nm=EXNAME[+m[1]];return nm?{label:'Executor '+m[1]+' "'+nm+'"'}:null;}
   return null;
 }
 const KEYCYCLE={Assign:['Assign','Label'],Fixture:['Fixture','Selection'],Channel:['Channel','Generic'],
@@ -318,7 +328,7 @@ function pad(kind,v){
   else if(kind==='clear'){if(c){typeKey('{ESC}');S.cmd='';}else cmdSend('Clear');}
   else if(kind==='oops'){if(c){const m=/(\S+\s*)$/.exec(c);const n=m?m[1].length:1;typeKey('{BS '+n+'}');S.cmd=c.slice(0,c.length-n);}else cmdSend('Oops');}
   else if(kind==='bs'){typeKey('{BS}');S.cmd=c.slice(0,-1);}
-  else if(kind==='esc'){typeKey('{ESC}');S.cmd='';}
+  else if(kind==='esc'){if(!c.trim()&&wsOk){try{ws.send('!esc\t-\t'+Date.now());}catch(e){}osc('Esc → MA');}S.cmd='';}
   osc(wsOk?'linia komend: '+(S.cmd||'(pusta)'):'BRAK POŁĄCZENIA');
   showCmd();
 }

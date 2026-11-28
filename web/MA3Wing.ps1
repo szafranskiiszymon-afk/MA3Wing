@@ -222,7 +222,8 @@ function Read-NetState([string]$payload) {
     if ($batch.Length) { Send-ToClients $batch.ToString(); $script:cacheDirty = $true }
 }
 $StateFile = Join-Path $env:TEMP 'MA3Wing-faders.txt'
-$CmdLineFile = Join-Path $env:TEMP 'MA3Wing-cmdline.txt'   # linia komend z iPada, czyta ja wtyczka
+$CmdLineFile = Join-Path $env:TEMP 'MA3Wing-cmdline.txt'
+$EscFile = Join-Path $env:TEMP 'MA3Wing-esc.txt'   # linia komend z iPada, czyta ja wtyczka
 try { [IO.File]::WriteAllText($CmdLineFile, '', (New-Object Text.UTF8Encoding $false)) } catch {}   # zapisuje go wtyczka MA3Wing.lua w onPC
 $stateStamp = [DateTime]::MinValue
 $stateSeen = $false
@@ -334,6 +335,10 @@ function Invoke-Line([string]$line) {
     if ($parts.Count -lt 3) { return }
     if ($parts[0] -eq '!keys') { Send-MAKeys $parts[1] $parts[2]; return }
     if ($parts[0] -eq '!hold') { Send-MAHold $parts[1] $parts[2]; return }
+    if ($parts[0] -eq '!esc') {          # klawisz Esc z iPada -> wtyczka naciska Esc w MA (zamyka okna)
+        try { [IO.File]::WriteAllText($script:EscFile, $parts[2], (New-Object Text.UTF8Encoding $false)) } catch {}
+        return
+    }
     if ($parts[0] -eq '!cmdline') {      # linia komend z iPada -> plik dla wtyczki (pokazuje ja w linii komend onPC)
         try { [IO.File]::WriteAllText($script:CmdLineFile, $parts[2], (New-Object Text.UTF8Encoding $false)) } catch {}
         return
