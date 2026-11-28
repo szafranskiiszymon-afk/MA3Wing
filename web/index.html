@@ -76,6 +76,7 @@ function feedback(line){
   if(/^ATTR/.test(p[1]||'')){attrFeedback(p[1],p[2]||'');return;}
   if(/^EXEC\d+$/.test(p[1]||'')){applyExec(+p[1].slice(4),p[2]||'');return;}
   if(/^(GRP|PRE\d+\.)/.test(p[1]||'')){poolFeedback(p[1],p[2]||'');return;}
+  if(/^LAY/.test(p[1]||'')){layoutFeedback(p[1],p[2]||'');return;}
   if(p[1]==='KEYS'){maTyped=(p[2]==='ok');return;}
   if(p[1]==='CMDLINE'){if(!maTyped&&S.cmd)return;/* pending command lives only on the iPad */S.cmd=(p[2]||'').replace(/^\s+/,'');if(S.cmd&&!/ $/.test(S.cmd))S.cmd+=' ';showCmd();return;}
   if(touching>0)return;
@@ -195,7 +196,7 @@ pageEl=el('span','font:700 15px ui-monospace,Menlo,monospace;color:#ffc71a;width
 key(top,'▶','width:40px;height:34px;flex:none',()=>{S.page++;S.f={};S.kn={};pageEl.textContent='Page '+S.page;redrawAll.forEach(f=>f());showCmd();cmdSend('Page '+S.page);});
 const tabBar=el('div','display:flex;gap:4px;flex:none',top);
 const tabBtns={};
-['Wing','Groups','Presets'].forEach(t=>{tabBtns[t]=key(tabBar,t,'height:34px;width:74px',()=>showTab(t));});
+['Wing','Groups','Presets','Layout'].forEach(t=>{tabBtns[t]=key(tabBar,t,'height:34px;width:70px',()=>showTab(t));});
 const cl=el('div','flex:1;min-width:0;height:36px;background:#000;border-radius:6px;display:flex;align-items:center;gap:16px;padding:0 10px;overflow:hidden',top);
 cmdEl=el('div','font:14px ui-monospace,Menlo,monospace;white-space:nowrap;flex:1;min-width:0;overflow:hidden',cl);
 lastEl=el('div','color:#8e8e93;white-space:nowrap;flex:none',cl,'—');lastEl.className='mono';
@@ -456,12 +457,63 @@ function renderPool(){
     }
   }
 }
+// ===== Layout view (plugin v10: LAYLIST, LAYn=name|col, LAYNn=count, LAYELn.i=x|y|w|h|label|addr|col) =====
+const LAYS={};let layList=[],curLay=null,layFirst=0,layTimer=null;
+let layFlipY=true;try{layFlipY=localStorage.getItem('ma3wing.layflip')!=='0';}catch(e){}
+function layoutFeedback(k,v){
+  let m;
+  if(k==='LAYLIST'){layList=v?v.split(',').map(Number):[];Object.keys(LAYS).forEach(n=>{if(layList.indexOf(+n)<0)delete LAYS[n];});}
+  else if((m=/^LAYN(\d+)$/.exec(k))){const L=LAYS[m[1]]||(LAYS[m[1]]={name:'',col:'',els:[]});L.els.length=Math.min(L.els.length,+v||0);L.n=+v||0;}
+  else if((m=/^LAYEL(\d+)\.(\d+)$/.exec(k))){const L=LAYS[m[1]]||(LAYS[m[1]]={name:'',col:'',els:[]});const q=v.split('|');
+    L.els[+m[2]-1]={x:+q[0],y:+q[1],w:+q[2]||1,h:+q[3]||1,label:q[4]||'',addr:q[5]||'',col:/^#[0-9a-f]{6}$/i.test(q[6]||'')?q[6]:''};}
+  else if((m=/^LAY(\d+)$/.exec(k))){const L=LAYS[m[1]]||(LAYS[m[1]]={name:'',col:'',els:[]});const q=v.split('|');L.name=q[0]||'';L.col=q[1]||'';}
+  clearTimeout(layTimer);layTimer=setTimeout(()=>{if(curTab==='Layout')renderLayout();},120);
+}
+const layView=el('div','width:552px;flex:none;display:none;flex-direction:column;gap:8px',body);
+body.insertBefore(layView,ex);
+const layHead=el('div','display:flex;gap:4px;align-items:center;height:34px',layView);
+key(layHead,'◀','height:34px;width:34px;flex:none',()=>{if(layFirst>0){layFirst--;renderLayout();}});
+const layTabs=el('div','display:flex;gap:4px;flex:1;min-width:0',layHead);
+key(layHead,'▶','height:34px;width:34px;flex:none',()=>{if(layFirst+4<layList.length){layFirst++;renderLayout();}});
+key(layHead,'⇅','height:34px;width:34px;flex:none',()=>{layFlipY=!layFlipY;try{localStorage.setItem('ma3wing.layflip',layFlipY?'1':'0')}catch(e){}renderLayout();});
+const layCanvas=el('div','flex:1;position:relative;background:#121214;border-radius:8px;overflow:hidden',layView);
+function layTap(addr){
+  if(!addr)return;
+  if(S.cmd.trim())completeWith(addr);    // e.g. Store + element
+  else cmdSend(addr);                     // select fixture / call the assigned object
+}
+function renderLayout(){
+  layTabs.innerHTML='';
+  if(curLay===null||layList.indexOf(curLay)<0)curLay=layList[0]!==undefined?layList[0]:null;
+  layList.slice(layFirst,layFirst+4).forEach(n=>{const L=LAYS[n]||{};const on=n===curLay;
+    const b=key(layTabs,esc(L.name||('Layout '+n)),'height:34px;flex:1;min-width:0;font-size:11px;padding:0 4px'+(on?';background:#ffc71a;color:#1a1400':''),()=>{curLay=n;renderLayout();});});
+  layCanvas.innerHTML='';
+  const L=curLay!==null?LAYS[curLay]:null;
+  if(!L||!L.els.filter(Boolean).length){el('div','position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8e8e93;font-size:13px;text-align:center;padding:20px',layCanvas,
+    layList.length?'Ten layout nie ma elementów albo jeszcze się wczytuje.':'Brak layoutów z MA. Uruchom wtyczkę MA3Wing (v10) w onPC.');return;}
+  const els=L.els.filter(Boolean);
+  let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+  els.forEach(e=>{x0=Math.min(x0,e.x-e.w/2);x1=Math.max(x1,e.x+e.w/2);y0=Math.min(y0,e.y-e.h/2);y1=Math.max(y1,e.y+e.h/2);});
+  const CW=layCanvas.clientWidth||552,CH=layCanvas.clientHeight||660,pad=10;
+  const sc=Math.min((CW-2*pad)/Math.max(1e-6,x1-x0),(CH-2*pad)/Math.max(1e-6,y1-y0));
+  const ox=pad+((CW-2*pad)-(x1-x0)*sc)/2,oy=pad+((CH-2*pad)-(y1-y0)*sc)/2;
+  els.forEach(e=>{
+    const w=Math.max(14,e.w*sc),h=Math.max(14,e.h*sc);
+    const cx=ox+(e.x-x0)*sc,cy=layFlipY?oy+(y1-e.y)*sc:oy+(e.y-y0)*sc;
+    const fs=Math.max(8,Math.min(13,Math.min(w,h)/3.2));
+    const b=key(layCanvas,'<span class="nm" style="white-space:normal">'+esc(e.label||'')+'</span>',
+      'position:absolute;left:'+(cx-w/2)+'px;top:'+(cy-h/2)+'px;width:'+w+'px;height:'+h+'px;padding:1px;font-size:'+fs+'px;line-height:1.1'+
+      (e.col?';background:'+shade(e.col,0.45)+';box-shadow:inset 0 2px 0 '+e.col:'')+(e.addr?'':';opacity:0.6'),()=>layTap(e.addr));
+    b.title=e.addr;
+  });
+}
 function showTab(t){
   curTab=t;poolPage=0;
-  const wing=t==='Wing';
-  ex.style.display=wing?'flex':'none';ms.style.display=wing?'flex':'none';poolView.style.display=wing?'none':'flex';
+  const wing=t==='Wing',lay=t==='Layout';
+  ex.style.display=wing?'flex':'none';ms.style.display=wing?'flex':'none';
+  poolView.style.display=(!wing&&!lay)?'flex':'none';layView.style.display=lay?'flex':'none';
   Object.keys(tabBtns).forEach(k=>{const on=k===t;tabBtns[k].style.background=on?'#ffc71a':'';tabBtns[k].style.color=on?'#1a1400':'';});
-  if(!wing)renderPool();
+  if(lay)renderLayout();else if(!wing)renderPool();
   redrawAll.forEach(f=>f());
 }
 showTab('Wing');

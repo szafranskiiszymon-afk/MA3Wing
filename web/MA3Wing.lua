@@ -177,6 +177,70 @@ local function poolScan()
     return out, keys, table.concat(sig, ';')
 end
 
+-- ===== Layouty: elementy (pozycja, rozmiar, nazwa, adres obiektu, kolor) =====
+local function addrOf(h)
+    if h == nil or type(h) == 'string' or type(h) == 'number' then return '' end
+    local ok, a = pcall(function() return h:ToAddr() end)
+    if ok and type(a) == 'string' and a ~= '' then return a end
+    ok, a = pcall(ToAddr, h)
+    if ok and type(a) == 'string' then return a end
+    return ''
+end
+local layoutDumped = false
+local layoutCount, elementCount = 0, 0
+local function layoutScan()
+    local out, keys = {}, {}
+    local function put(k, v) out[k] = v; keys[#keys + 1] = k end
+    local list = {}
+    local ok, l = pcall(ObjectList, 'Layout 1 Thru 999')
+    if ok and type(l) == 'table' and #l > 0 then list = l
+    else
+        local okd, dp = pcall(DataPool)
+        if okd and dp ~= nil then list = children(prop(dp, 'layouts')) end
+    end
+    local nums = {}
+    elementCount = 0
+    for _, lay in ipairs(list) do
+        local no = tonumber(prop(lay, 'no'))
+        if no then
+            nums[#nums + 1] = no
+            put('LAY' .. no, clean(prop(lay, 'name')) .. '|' .. appearanceColor(lay))
+            local en = 0
+            for _, e in ipairs(children(lay)) do
+                local x = firstNum(e, {'posx', 'positionx', 'x'})
+                local y = firstNum(e, {'posy', 'positiony', 'y'})
+                if x == nil or y == nil then
+                    if not layoutDumped then
+                        layoutDumped = true
+                        say('nie znam nazw pozycji elementu Layout - ponizej opis, przeslij zrzut:')
+                        pcall(function() e:Dump() end)
+                    end
+                else
+                    local w = firstNum(e, {'positionw', 'width', 'sizew', 'w'}) or 1
+                    local hh = firstNum(e, {'positionh', 'height', 'sizeh', 'h'}) or 1
+                    local obj = prop(e, 'object')
+                    if type(obj) == 'string' or type(obj) == 'number' then obj = nil end
+                    local addr = addrOf(obj)
+                    local label = prop(e, 'name')
+                    if (label == nil or label == '') and obj ~= nil then label = prop(obj, 'name') end
+                    local col = appearanceColor(e)
+                    if col == '' and obj ~= nil then col = appearanceColor(obj) end
+                    en = en + 1
+                    put('LAYEL' .. no .. '.' .. en, string.format('%g|%g|%g|%g|%s|%s|%s', x, y, w, hh, clean(label), clean(addr), col))
+                end
+            end
+            put('LAYN' .. no, tostring(en))
+            elementCount = elementCount + en
+        end
+    end
+    table.sort(nums)
+    layoutCount = #nums
+    put('LAYLIST', table.concat(nums, ','))
+    local sig = {}
+    for _, k in ipairs(keys) do sig[#sig + 1] = k .. '=' .. out[k] end
+    return out, keys, table.concat(sig, ';')
+end
+
 -- tekst w linii komend MA (nazwa wlasciwosci rozni sie miedzy wersjami - probujemy kilku)
 local cmdProp = nil
 local function cmdLine()
@@ -190,7 +254,7 @@ local function cmdLine()
     return nil
 end
 
-local function writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys)
+local function writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys)
     local f, err = io.open(file, 'w')
     if not f then return false, err end
     for _, base in ipairs(ROWS) do
@@ -205,6 +269,9 @@ local function writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys)
     if cmd ~= nil then f:write('CMDLINE=', clean(cmd), '\n') end
     if pools and poolKeys then
         for _, k in ipairs(poolKeys) do f:write(k, '=', pools[k], '\n') end
+    end
+    if lays and layKeys then
+        for _, k in ipairs(layKeys) do f:write(k, '=', lays[k], '\n') end
     end
     attrs = attrs or {}
     f:write('ATTRN=', #attrs, '\n')
@@ -231,13 +298,14 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v9), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v10), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
     local execs, lastExecSig = {}, nil
     local cmd, lastCmd = nil, nil
     local pools, poolKeys, lastPoolSig = {}, {}, nil
+    local lays, layKeys, lastLaySig = {}, {}, nil
     while MA3WingToken == token do
         local page = pageNumber()
         local changed = (page ~= lastPage)
@@ -248,6 +316,11 @@ local function run()
         end
         cmd = cmdLine()
         if cmd ~= lastCmd then lastCmd, changed = cmd, true end
+        if tick % 50 == 3 then                      -- layouty co ~5 s
+            local lo, lk, lsig = layoutScan()
+            if lastLaySig == nil then say(string.format('layouty: %d, elementow: %d', layoutCount, elementCount)) end
+            if lsig ~= lastLaySig then lays, layKeys, lastLaySig, changed = lo, lk, lsig, true end
+        end
         if tick % 20 == 2 then                      -- pule grup i presetow co ~2 s
             local pl, pk, psig = poolScan()
             if lastPoolSig == nil then
@@ -270,7 +343,7 @@ local function run()
             end
         end
         if changed then
-            local ok, err = writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys)
+            local ok, err = writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys)
             if ok then
                 last, lastPage = vals, page
             else
