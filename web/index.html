@@ -646,6 +646,7 @@ const layHead=el('div','display:flex;gap:4px;align-items:center;height:34px;flex
 key(layHead,'◀','height:34px;width:34px;flex:none',()=>{if(layFirst>0){layFirst--;renderViews();}});
 const layTabs=el('div','display:flex;gap:4px;flex:1;min-width:0',layHead);
 key(layHead,'▶','height:34px;width:34px;flex:none',()=>{if(layFirst+7<layList.length){layFirst++;renderViews();}});
+key(layHead,'⤢','height:34px;width:34px;flex:none',()=>resetLayZoom());
 key(layHead,'⇅','height:34px;width:34px;flex:none',()=>{layFlipY=!layFlipY;try{localStorage.setItem('ma3wing.layflip',layFlipY?'1':'0')}catch(e){}renderViews();});
 const layMain=el('div','flex:1;min-height:0;display:flex;gap:8px',layView);
 const layCanvas=el('div','flex:1;min-width:0;position:relative;background:#121214;border-radius:10px;overflow:hidden',layMain);layCanvas.classList.add('mawin');
@@ -719,25 +720,41 @@ function sendLaySel(){
   layInternal=false;paintLaySel();
 }
 function layHit(x,y){for(let i=layEls.length-1;i>=0;i--){const o=layEls[i];if(x>=o.x&&x<=o.x+o.w&&y>=o.y&&y<=o.y+o.h)return o;}return null;}
+// zoom / pan per view (two fingers, like in MA)
+let layInner=null;const LAYZ={};
+function layZ(){return LAYZ[curLay]||(LAYZ[curLay]={z:1,x:0,y:0});}
+function applyLayZoom(){if(!layInner)return;const Z=layZ();layInner.style.transform='translate('+Z.x+'px,'+Z.y+'px) scale('+Z.z+')';}
+function resetLayZoom(){LAYZ[curLay]={z:1,x:0,y:0};applyLayZoom();}
 (function(){
-  let st=null,lasso=null;const ptr=new Set();
+  let st=null,lasso=null,pinch=null,blocked=false;const P=new Map();
   const pos=e=>{const r=layCanvas.getBoundingClientRect();return {x:(e.clientX-r.left)/scale,y:(e.clientY-r.top)/scale};};
-  layCanvas.addEventListener('pointerdown',e=>{if(vEdit)return;e.preventDefault();ptr.add(e.pointerId);
-    if(ptr.size>1){st=null;if(lasso){lasso.remove();lasso=null;}return;}
-    try{layCanvas.setPointerCapture(e.pointerId)}catch(x){}st=Object.assign(pos(e),{id:e.pointerId});});
-  layCanvas.addEventListener('pointermove',e=>{if(!st||e.pointerId!==st.id)return;const p=pos(e);
+  const inner=p=>{const Z=layZ();return {x:(p.x-Z.x)/Z.z,y:(p.y-Z.y)/Z.z};};
+  const two=()=>{const v=[...P.values()];return {d:Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y)||1,m:{x:(v[0].x+v[1].x)/2,y:(v[0].y+v[1].y)/2}};};
+  layCanvas.addEventListener('pointerdown',e=>{if(vEdit)return;e.preventDefault();try{layCanvas.setPointerCapture(e.pointerId)}catch(x){}
+    P.set(e.pointerId,pos(e));
+    if(P.size===2){st=null;if(lasso){lasso.remove();lasso=null;}const t=two(),Z=layZ();pinch={d0:t.d,m0:t.m,z0:Z.z,x0:Z.x,y0:Z.y};blocked=true;return;}
+    if(P.size>2)return;
+    blocked=false;st=Object.assign(pos(e),{id:e.pointerId});});
+  layCanvas.addEventListener('pointermove',e=>{if(!P.has(e.pointerId))return;const p=pos(e);P.set(e.pointerId,p);
+    if(pinch&&P.size>=2){const t=two(),Z=layZ();
+      const z=Math.max(0.5,Math.min(8,pinch.z0*t.d/pinch.d0));
+      Z.x=t.m.x-(pinch.m0.x-pinch.x0)*(z/pinch.z0);Z.y=t.m.y-(pinch.m0.y-pinch.y0)*(z/pinch.z0);Z.z=z;applyLayZoom();return;}
+    if(!st||e.pointerId!==st.id)return;
     if(!lasso&&Math.hypot(p.x-st.x,p.y-st.y)>10){lasso=el('div','position:absolute;border:1px dashed #ffc71a;background:rgba(255,199,26,.12);pointer-events:none;z-index:3',layCanvas);}
     if(lasso){const x=Math.min(p.x,st.x),y=Math.min(p.y,st.y);Object.assign(lasso.style,{left:x+'px',top:y+'px',width:Math.abs(p.x-st.x)+'px',height:Math.abs(p.y-st.y)+'px'});}});
-  const end=e=>{ptr.delete(e.pointerId);if(!st||e.pointerId!==st.id)return;const p=pos(e),s=st;st=null;
+  const end=e=>{if(!P.has(e.pointerId))return;P.delete(e.pointerId);
+    if(P.size<2)pinch=null;
+    if(blocked){if(P.size===0)blocked=false;st=null;return;}     // after a pinch: no tap / lasso
+    if(!st||e.pointerId!==st.id)return;const p=pos(e),s=st;st=null;
     if(e.type!=='pointerup'){if(lasso){lasso.remove();lasso=null;}return;}
     if(lasso){lasso.remove();lasso=null;
-      const x0=Math.min(p.x,s.x),x1=Math.max(p.x,s.x),y0=Math.min(p.y,s.y),y1=Math.max(p.y,s.y);
-      const hit=layEls.filter(o=>o.fid!==null&&o.x<x1&&o.x+o.w>x0&&o.y<y1&&o.y+o.h>y0)
-        .sort((a,b)=>(s.x<=p.x?a.x-b.x:b.x-a.x)||(a.y-b.y));     // lasso order follows the drag direction
+      const a=inner({x:Math.min(p.x,s.x),y:Math.min(p.y,s.y)}),b=inner({x:Math.max(p.x,s.x),y:Math.max(p.y,s.y)});
+      const hit=layEls.filter(o=>o.fid!==null&&o.x<b.x&&o.x+o.w>a.x&&o.y<b.y&&o.y+o.h>a.y)
+        .sort((u,v)=>(s.x<=p.x?u.x-v.x:v.x-u.x)||(u.y-v.y));     // lasso order follows the drag direction
       let added=0;hit.forEach(o=>{if(laySel.indexOf(o.fid)<0){laySel.push(o.fid);added++;}});
       if(added){vib();sendLaySel();}
       return;}
-    const o=layHit(p.x,p.y);if(!o||!o.addr)return;vib();
+    const q=inner(p),o=layHit(q.x,q.y);if(!o||!o.addr)return;vib();
     if(S.cmd.trim()){layTap(o.addr);return;}               // e.g. Store / At pending -> finish with the element
     if(o.fid===null){layTap(o.addr);return;}                // groups, macros ... call the object
     const i=laySel.indexOf(o.fid);if(i>=0)laySel.splice(i,1);else laySel.push(o.fid);
@@ -824,12 +841,13 @@ function renderViews(){
   const sc=Math.min((CW-2*padd)/Math.max(1e-6,x1-x0),(CH-2*padd)/Math.max(1e-6,y1-y0));
   const ox=padd+((CW-2*padd)-(x1-x0)*sc)/2,oy=padd+((CH-2*padd)-(y1-y0)*sc)/2;
   layEls=[];
+  layInner=el('div','position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:0 0',layCanvas);applyLayZoom();
   els.forEach(e=>{
     const w=Math.max(14,e.w*sc),h=Math.max(14,e.h*sc);
     const cx=ox+(e.x-x0)*sc,cy=layFlipY?oy+(y1-e.y)*sc:oy+(e.y-y0)*sc;
     const fs=Math.max(8,Math.min(13,Math.min(w,h)/3.2));
     const num=(/^Fixture\s+(\d+)/i.exec(e.addr)||[])[1];
-    const b=layEl(layCanvas,(num&&h>=34?'<span class="sub" style="font-size:'+Math.max(8,fs-2)+'px">'+num+'</span>':'')+'<span class="nm" style="white-space:normal">'+esc(e.label||'')+'</span>',
+    const b=layEl(layInner,(num&&h>=34?'<span class="sub" style="font-size:'+Math.max(8,fs-2)+'px">'+num+'</span>':'')+'<span class="nm" style="white-space:normal">'+esc(e.label||'')+'</span>',
       'position:absolute;left:'+(cx-w/2)+'px;top:'+(cy-h/2)+'px;width:'+w+'px;height:'+h+'px;padding:1px;font-size:'+fs+'px;line-height:1.1'+
       (e.col?';background:'+shade(e.col,0.45)+';box-shadow:inset 0 2px 0 '+e.col:(isMA()&&/^Fixture/i.test(e.addr)?';background:#000;border:2px solid #d8d8d8;border-radius:1px':''))+(e.addr?'':';opacity:0.6'));
     b.title=e.addr;
