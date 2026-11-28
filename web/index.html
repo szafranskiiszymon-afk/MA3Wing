@@ -465,7 +465,9 @@ function layoutFeedback(k,v){
   if(k==='LAYLIST'){layList=v?v.split(',').map(Number):[];Object.keys(LAYS).forEach(n=>{if(layList.indexOf(+n)<0)delete LAYS[n];});}
   else if((m=/^LAYN(\d+)$/.exec(k))){const L=LAYS[m[1]]||(LAYS[m[1]]={name:'',col:'',els:[]});L.els.length=Math.min(L.els.length,+v||0);L.n=+v||0;}
   else if((m=/^LAYEL(\d+)\.(\d+)$/.exec(k))){const L=LAYS[m[1]]||(LAYS[m[1]]={name:'',col:'',els:[]});const q=v.split('|');
-    L.els[+m[2]-1]={x:+q[0],y:+q[1],w:+q[2]||1,h:+q[3]||1,label:q[4]||'',addr:q[5]||'',col:/^#[0-9a-f]{6}$/i.test(q[6]||'')?q[6]:''};}
+    // MA sends negative positions as unsigned 16-bit (e.g. -430 -> 65106)
+    const s16=v=>{v=+v||0;return v>32767?v-65536:v;};
+    L.els[+m[2]-1]={x:s16(q[0]),y:s16(q[1]),w:+q[2]||1,h:+q[3]||1,label:q[4]||'',addr:q[5]||'',col:/^#[0-9a-f]{6}$/i.test(q[6]||'')?q[6]:''};}
   else if((m=/^LAY(\d+)$/.exec(k))){const L=LAYS[m[1]]||(LAYS[m[1]]={name:'',col:'',els:[]});const q=v.split('|');L.name=q[0]||'';L.col=q[1]||'';}
   clearTimeout(layTimer);layTimer=setTimeout(()=>{if(curTab==='Layout')renderLayout();},120);
 }

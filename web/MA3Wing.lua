@@ -207,14 +207,16 @@ local function layoutScan()
             put('LAY' .. no, clean(prop(lay, 'name')) .. '|' .. appearanceColor(lay))
             local en = 0
             for _, e in ipairs(children(lay)) do
+                if not layoutDumped then
+                    -- diagnostyka: pelny opis pierwszego elementu, zeby poznac nazwy pozycji/rozmiaru
+                    layoutDumped = true
+                    say('opis pierwszego elementu layoutu ' .. no .. ' (przeslij zrzut):')
+                    pcall(function() e:Dump() end)
+                end
                 local x = firstNum(e, {'posx', 'positionx', 'x'})
                 local y = firstNum(e, {'posy', 'positiony', 'y'})
                 if x == nil or y == nil then
-                    if not layoutDumped then
-                        layoutDumped = true
-                        say('nie znam nazw pozycji elementu Layout - ponizej opis, przeslij zrzut:')
-                        pcall(function() e:Dump() end)
-                    end
+                    -- brak pozycji: element pomijamy
                 else
                     local w = firstNum(e, {'positionw', 'width', 'sizew', 'w'}) or 1
                     local hh = firstNum(e, {'positionh', 'height', 'sizeh', 'h'}) or 1
@@ -298,7 +300,7 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v10), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v11), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
