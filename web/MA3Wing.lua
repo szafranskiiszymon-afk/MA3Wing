@@ -321,11 +321,13 @@ local function slotFor(sf, attr, v)
             if oka and a and tostring(prop(a, 'name')) == attr then
                 local lc = logicalChannel(ui)
                 for _, cf in ipairs(children(lc)) do
+                  if tostring(prop(cf, 'attribute') or '') ~= 'NoFeature' then
                     local okw, wh = pcall(function() return cf.wheel end)
                     local slots = (okw and wh ~= nil and type(wh) ~= 'string') and children(wh) or nil
                     for _, cs in ipairs(children(cf)) do
                         local d1, d2 = tonumber(prop(cs, 'dmxfrom')), tonumber(prop(cs, 'dmxto'))
-                        if d1 and d2 and v >= math.min(d1, d2) and v <= math.max(d1, d2) then
+                        local csn = tostring(prop(cs, 'name') or '')
+                        if csn ~= 'No Feature' and d1 and d2 and v >= math.min(d1, d2) and v <= math.max(d1, d2) then
                             setName = clean(prop(cs, 'name'))
                             local si = tonumber(prop(cs, 'wheelslotindex'))
                             if slots and si and slots[si] then
@@ -335,6 +337,7 @@ local function slotFor(sf, attr, v)
                         end
                     end
                     if setName ~= '' then break end
+                  end
                 end
                 break
             end
@@ -687,9 +690,9 @@ local function run()
     if net then
         netLast = {}
         netSendRaw(enc('HELLO=1'))
-        say('start (v23), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
+        say('start (v24), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
     else
-        say('start (v23), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+        say('start (v24), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
     end
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}

@@ -443,6 +443,8 @@ try {
                     } elseif ($path.StartsWith('/gobo/')) {
                         # obrazek gobo z biblioteki MA na tym laptopie (nazwa pliku ze slotu kola)
                         $name = [Uri]::UnescapeDataString($path.Substring(6)).ToLowerInvariant()
+                        $full = $ctx.Request.QueryString['p']                 # pelna sciezka z MA (opcjonalnie)
+                        if ($full) { $name = $full.ToLowerInvariant() }
                         $file = Find-GoboImage $name
                         if ($file) {
                             $bytes = [IO.File]::ReadAllBytes($file)
