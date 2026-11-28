@@ -101,7 +101,7 @@ function feedback(line){
   if(/^(GRP|PRE\d+\.)/.test(p[1]||'')){poolFeedback(p[1],p[2]||'');return;}
   if(/^LAY/.test(p[1]||'')){layoutFeedback(p[1],p[2]||'');return;}
   if(p[1]==='KEYS'){maTyped=(p[2]==='ok');return;}
-  if(p[1]==='CMDLINE'){if(!maTyped&&S.cmd)return;/* pending command lives only on the iPad */S.cmd=(p[2]||'').replace(/^\s+/,'');if(S.cmd&&!/ $/.test(S.cmd))S.cmd+=' ';showCmd();return;}
+  if(p[1]==='CMDLINE')return;   // the command line lives on the iPad
   if(touching>0)return;
   const m=/Page(\d+)\/Fader(\d+)$/.exec(p[1]||'');const v=parseFloat(p[2]);
   if(!m||isNaN(v)||+m[1]!==S.page)return;
@@ -182,22 +182,24 @@ function completeWith(obj){
   let c=S.cmd.trim();
   // Assign/Copy/Move/Clone without a source yet: the tapped object is the SOURCE, so just put it
   // into the command line and wait for the target (e.g. Assign, Group 5, then fader key 201)
-  if(/^(Assign|Copy|Move|Clone)$/i.test(c)){const t=' '+obj+' ';typeText(t);S.cmd=c+t;showCmd();osc('MA linia komend ← '+S.cmd+' (wybierz cel)');return;}
+  if(/^(Assign|Copy|Move|Clone)$/i.test(c)){const t=' '+obj+' ';typeText(t);S.cmd=c+t;showCmd();osc('linia komend: '+S.cmd+' (wybierz cel)');return;}
   // Assign/Copy/Move/Clone need "At" before the target: "Assign Group 5 At Exec 201"
   if(/^(Assign|Copy|Move|Clone)\b/i.test(c)&&/\d/.test(c)&&!/\b(At|Thru|\+|-)$/i.test(c))c+=' At';
   if(/^Store$/i.test(c)&&!S.storeOpt){const ex=storeTargetExists(obj);
     if(ex){typeKey('{ESC}');openStoreOpts({cmd:c,obj:obj,label:ex.label});return;}}
   typeKey('{ESC}');cmdSend(c+' '+obj+(S.storeOpt&&/^Store\b/i.test(c)?' '+S.storeOpt:''));S.cmd='';S.storeOpt='';showCmd();
 }
-function typeText(t){if(wsOk){try{ws.send('!keys\tt\t'+t);}catch(e){}}}
-function typeKey(k){if(wsOk){try{ws.send('!keys\tk\t'+k);}catch(e){}}}
+// Wing mode: nothing is typed into onPC (keyboard shortcuts may stay OFF). The command line is built
+// on the iPad and only the complete command is sent over OSC (/cmd), like a hardware wing.
+function typeText(t){}
+function typeKey(k){}
 // press/release of a real MA key via its keyboard shortcut (Store=S, Update=U): holding works like on the console
-function holdKey(dir,letter){if(wsOk){try{ws.send('!hold\t'+dir+'\t'+letter);}catch(e){}}}
+function holdKey(dir,letter){}
 function holdBtn(parent,label,letter,bg,fg){
   let held=false,timer=null,longp=false;
   return key(parent,label,'height:auto;min-height:0;background:'+bg+';color:'+fg,
     ()=>{holdKey('d',letter);held=true;longp=false;const c=S.cmd;S.cmd=c+(c&&!/ $/.test(c)?' ':'')+label+' ';showCmd();
-      osc('MA klawisz '+label+(letter==='S'?' (przytrzymaj = opcje Store)':''));
+      osc(label+(letter==='S'?' – wybierz cel (przytrzymaj = opcje Store)':' – wybierz cel'));
       if(letter==='S'){clearTimeout(timer);timer=setTimeout(()=>{if(held){holdKey('u',letter);held=false;longp=true;openStoreOpts();}},350);}},
     ()=>{clearTimeout(timer);if(held){holdKey('u',letter);held=false;}});
 }
@@ -256,7 +258,7 @@ function pad(kind,v){
   else if(kind==='oops'){if(c){const m=/(\S+\s*)$/.exec(c);const n=m?m[1].length:1;typeKey('{BS '+n+'}');S.cmd=c.slice(0,c.length-n);}else cmdSend('Oops');}
   else if(kind==='bs'){typeKey('{BS}');S.cmd=c.slice(0,-1);}
   else if(kind==='esc'){typeKey('{ESC}');S.cmd='';}
-  osc(wsOk?'MA linia komend ← '+(S.cmd||'(pusta)'):'BRAK POŁĄCZENIA');
+  osc(wsOk?'linia komend: '+(S.cmd||'(pusta)'):'BRAK POŁĄCZENIA');
   showCmd();
 }
 const R='#a32a26',B='#24457a',A='#e0961f',AT='#2b1a00',N='#3a3a3f',G='#1f7a3c',W='#fff';
