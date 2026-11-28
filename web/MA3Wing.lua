@@ -44,7 +44,50 @@ local function prop(h, k)
     return nil
 end
 
--- atrybuty pierwszego zaznaczonego urzadzenia: { {grupa, nazwa, ladna nazwa}, ... }
+-- atrybuty pierwszego zaznaczonego urzadzenia:
+-- { {grupa, nazwa, ladna nazwa, min, max, "channelset1;channelset2;..."}, ... }
+local function children(h)
+    if h == nil or type(h) == 'string' then return {} end
+    local ok, c = pcall(function() return h:Children() end)
+    if ok and type(c) == 'table' then return c end
+    return {}
+end
+local uiDumped = false
+local function clean(t) return (tostring(t or ''):gsub('[|=;\r\n]', ' ')) end
+local function logicalChannel(ui)
+    local ok, u = pcall(GetUIChannel, ui)
+    if not ok or u == nil then return nil end
+    local lc = nil
+    for _, k in ipairs({'logical_channel', 'logicalchannel', 'LogicalChannel'}) do
+        local okk, v = pcall(function() return u[k] end)
+        if okk and v ~= nil and type(v) ~= 'string' and type(v) ~= 'number' then lc = v; break end
+    end
+    if lc == nil and not uiDumped then
+        uiDumped = true
+        local keys = {}
+        if type(u) == 'table' then for k, _ in pairs(u) do keys[#keys + 1] = tostring(k) end end
+        say('nie znalazlem logical channel - pola UIChannel: ' .. table.concat(keys, ', '))
+    end
+    return lc
+end
+local function channelInfo(ui)
+    local lc = logicalChannel(ui)
+    if lc == nil then return '', '', '' end
+    local sets, seen, mn, mx = {}, {}, nil, nil
+    for _, cf in ipairs(children(lc)) do
+        local a = tonumber(prop(cf, 'physfrom')); local b = tonumber(prop(cf, 'physto'))
+        if a and b then
+            if mn == nil or math.min(a, b) < mn then mn = math.min(a, b) end
+            if mx == nil or math.max(a, b) > mx then mx = math.max(a, b) end
+        end
+        for _, cs in ipairs(children(cf)) do
+            local n = clean(prop(cs, 'name'))
+            if n ~= '' and not seen[n] and #sets < 48 then seen[n] = true; sets[#sets + 1] = n end
+        end
+    end
+    local f = function(v) if v == nil then return '' end return string.format('%g', v) end
+    return f(mn), f(mx), table.concat(sets, ';')
+end
 local function attrList()
     local list = {}
     local ok, sf = pcall(SelectionFirst)
@@ -65,7 +108,9 @@ local function attrList()
                     local okp, par = pcall(function() return feat:Parent() end)
                     if okp and par ~= nil then grp = tostring(prop(par, 'name') or '') end
                 end
-                list[#list + 1] = { grp, name, pretty }
+                local okc, mn, mx, sets = pcall(channelInfo, ui)
+                if not okc then mn, mx, sets = '', '', '' end
+                list[#list + 1] = { grp, name, pretty, mn, mx, sets }
             end
         end
     end
@@ -106,7 +151,6 @@ local function appearanceColor(obj)
     local function c(x) x = math.floor(x * k + 0.5); if x < 0 then x = 0 elseif x > 255 then x = 255 end; return x end
     return string.format('#%02x%02x%02x', c(r), c(g), c(b))
 end
-local function clean(t) return (tostring(t or ''):gsub('[|=\r\n]', ' ')) end
 local function execInfo()
     local out, sig = {}, {}
     for _, n in ipairs(EXECS) do
@@ -129,12 +173,6 @@ end
 -- zawartosc pul: grupy i presety (numer -> nazwa|kolor) + lista istniejacych numerow
 local PRESET_POOLS = {2, 6}          -- 2 = Position, 6 = Focus
 local POOL_MAX = 500
-local function children(h)
-    if h == nil or type(h) == 'string' then return {} end
-    local ok, c = pcall(function() return h:Children() end)
-    if ok and type(c) == 'table' then return c end
-    return {}
-end
 -- drugi sposob: bezposrednio z DataPool (gdy ObjectList nic nie zwraca)
 local function viaDataPool(kind, t)
     local okd, dp = pcall(DataPool)
@@ -278,7 +316,7 @@ local function writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, 
     attrs = attrs or {}
     f:write('ATTRN=', #attrs, '\n')
     for i, a in ipairs(attrs) do
-        f:write('ATTR', i, '=', a[1], '|', a[2], '|', a[3], '\n')
+        f:write('ATTR', i, '=', a[1], '|', a[2], '|', a[3], '|', a[4] or '', '|', a[5] or '', '|', a[6] or '', '\n')
     end
     f:write('END\n')
     f:close()
@@ -300,7 +338,7 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v11), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v12), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
