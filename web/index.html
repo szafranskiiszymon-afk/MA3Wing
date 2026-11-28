@@ -701,8 +701,12 @@ function objTap(obj,apply){
 // ===== Layout selection like in MA: tap = select / deselect, drag on the layout = lasso =====
 function layEl(parent,html,style){const d=el('div',style,parent,html);d.className='k';d.style.pointerEvents='none';
   d.style.display='flex';d.style.flexDirection='column';d.style.alignItems='center';d.style.justifyContent='center';d.style.textAlign='center';d.style.boxSizing='border-box';return d;}
+// selection frame without outline/filter (Safari draws those badly on the scaled page)
 function paintLaySel(){layEls.forEach(o=>{if(o.fid===null)return;const on=laySel.indexOf(o.fid)>=0;
-  o.b.style.outline=on?'3px solid #ffc71a':'';o.b.style.outlineOffset=on?'1px':'';o.b.style.filter=on?'brightness(1.5)':'';});}
+  if(o.base===undefined)o.base={bc:o.b.style.borderColor,bs:o.b.style.boxShadow,col:o.b.style.color};
+  o.b.style.borderColor=on?'#ffc71a':o.base.bc;
+  o.b.style.boxShadow=on?'0 0 0 3px #ffc71a'+(o.base.bs?', '+o.base.bs:''):o.base.bs;
+  o.b.style.color=on?'#ffc71a':o.base.col;});}
 function fixList(ids){   // keeps the selection order, folds consecutive numbers: 101 Thru 106 + 111
   const out=[];let i=0;
   while(i<ids.length){let j=i;while(j+1<ids.length&&ids[j+1]===ids[j]+1)j++;
