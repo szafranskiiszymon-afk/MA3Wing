@@ -661,14 +661,18 @@ const cTitleT=el('div','flex:1;font:600 15px -apple-system,sans-serif;white-spac
 const cAttrPrev=key(cTitle,'◀','height:34px;width:40px;flex:none',()=>stepCalc(-1));
 const cAttrNext=key(cTitle,'▶','height:34px;width:40px;flex:none',()=>stepCalc(1));
 key(cTitle,'✕','height:34px;width:44px;flex:none;background:#a32a26;color:#fff',()=>closeCalc());
-const cInput=el('div','height:40px;flex:none;margin:8px 10px 0;background:#000;border-radius:6px;display:flex;align-items:center;padding:0 12px;font:18px ui-monospace,Menlo,monospace;color:#ffc71a',cBox,'');
+const cRow=el('div','height:40px;flex:none;margin:8px 10px 0;display:flex;gap:5px',cBox);
+const cModes=el('div','display:flex;gap:4px;flex:none',cRow);
+const cInput=el('div','flex:1;min-width:0;background:#000;border-radius:6px;display:flex;align-items:center;padding:0 12px;font:18px ui-monospace,Menlo,monospace;color:#ffc71a;white-space:nowrap;overflow:hidden',cRow,'');
+const cAllBtn=key(cRow,'','height:40px;width:150px;flex:none;font-size:11px;white-space:normal;line-height:1.15',()=>{calcAll=!calcAll;renderCalc();});
 const cMain=el('div','flex:1;min-height:0;display:flex;gap:10px;padding:10px',cBox);
 const cPad=el('div','width:330px;flex:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));gap:5px',cMain);
 const cSide=el('div','flex:1;min-width:0;display:flex;flex-direction:column;gap:6px',cMain);
 const cTabs=el('div','display:flex;gap:4px;height:34px;flex:none',cSide);
 const cList=el('div','flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:52px;gap:5px;align-content:start',cSide);
 const cNav=el('div','display:flex;gap:4px;height:30px;flex:none',cSide);
-let calcIdx=-1,calcTxt='',calcTab='sets',calcPage=0;
+let calcIdx=-1,calcTxt='',calcTab='sets',calcPage=0,calcMode='val',calcAll=false;
+const CMODES=[['val','Wartość'],['fade','Fade'],['delay','Delay']];
 function calcAttr(){return encSlot[calcIdx];}
 function calcShow(){cInput.textContent=calcTxt||' ';}
 function calcKey(t){
@@ -679,8 +683,9 @@ function calcKey(t){
   calcShow();
 }
 function calcPlease(){
-  const a=calcAttr(),v=calcTxt.trim();if(!a||!v){closeCalc();return;}
-  cmdSend('Attribute "'+a.name+'" At '+v);closeCalc();
+  const a=calcAttr(),v=calcTxt.trim();if(!v){closeCalc();return;}
+  if(calcMode==='val'){if(a)cmdSend('Attribute "'+a.name+'" At '+v);closeCalc();return;}
+  calcTime(v);
 }
 [['7'],['8'],['9'],['+'],['Back'],['4'],['5'],['6'],['Thru'],['Clear'],['1'],['2'],['3'],['-'],['%'],['0'],['.'],['/'],['*'],['+/-']].forEach(a=>{
   const t=a[0],num=/^[0-9.]$/.test(t);
@@ -688,12 +693,33 @@ function calcPlease(){
     if(t==='+/-'){calcTxt=/^-/.test(calcTxt)?calcTxt.slice(1):'-'+calcTxt;calcShow();}else calcKey(t);});
 });
 const cPl=key(cPad,'Please','height:auto;min-height:0;grid-column:span 5;background:'+G+';color:#fff;font-size:15px',()=>calcPlease());
+// Fade / Delay of the attribute (or of all attributes of the selection), like MA's Fade/Delay layer:
+// Attribute "Pan" At Fade 2  |  At Delay 0.5
+function calcTime(v){
+  const a=calcAttr(),kw=calcMode==='fade'?'Fade':'Delay';
+  cmdSend((calcAll||!a?'':'Attribute "'+a.name+'" ')+'At '+kw+' '+v);
+  calcTxt='';calcShow();closeCalc();
+}
 function presetTypeFor(a){if(!a)return 0;const g=(maAttrs.find(x=>x.name===a.name)||{}).g||guessGroup(a.name);return g==='Position'?2:(g==='Focus'?6:0);}
 function renderCalc(){
   const a=calcAttr();
   if(!a){cTitleT.innerHTML='Brak atrybutu na tym enkoderze';cList.innerHTML='';cTabs.innerHTML='';return;}
   const rng=(a.min!==''&&a.max!==''&&a.min!==undefined)?' <span style="color:#8e8e93;font-weight:400">['+esc(a.min)+' .. '+esc(a.max)+']</span>':'';
   cTitleT.innerHTML='Edit <b style="color:#ffc71a">'+esc(a.pretty||a.name)+'</b>'+rng+' <span style="color:#8e8e93;font-weight:400;font-size:12px">'+esc(curGroup)+' · enkoder '+(calcIdx+1)+'</span>';
+  cModes.innerHTML='';
+  CMODES.forEach(m=>{const on=m[0]===calcMode;key(cModes,m[1],'height:40px;width:78px;flex:none'+(on?';background:'+(m[0]==='val'?'#ffc71a':'#5e5ce6')+';color:'+(m[0]==='val'?'#1a1400':'#fff'):''),()=>{calcMode=m[0];calcTxt='';calcShow();renderCalc();});});
+  const timed=calcMode!=='val';
+  cAllBtn.style.visibility=timed?'visible':'hidden';
+  cAllBtn.innerHTML=calcAll?'Wszystkie atrybuty<br><span class="sub">zaznaczenia</span>':'Tylko <b>'+esc(a.pretty||a.name)+'</b>';
+  cAllBtn.style.background=calcAll?'#5e5ce6':'';cAllBtn.style.color=calcAll?'#fff':'';
+  cInput.style.color=timed?'#b4b3ff':'#ffc71a';
+  if(timed){
+    cTitleT.innerHTML=(calcMode==='fade'?'Fade':'Delay')+' <span style="color:#8e8e93;font-weight:400">(sekundy)</span> · '+(calcAll?'wszystkie atrybuty zaznaczenia':'<b style="color:#ffc71a">'+esc(a.pretty||a.name)+'</b>');
+    cTabs.innerHTML='';key(cTabs,'Szybki czas','height:34px;width:160px;flex:none;background:#5e5ce6;color:#fff');
+    cList.innerHTML='';cNav.style.visibility='hidden';
+    ['0','0.2','0.5','1','1.5','2','3','4','5','8','10','15'].forEach(t=>key(cList,t+' s','height:auto;font-size:15px;background:#2f3036',()=>calcTime(t)));
+    return;
+  }
   const pt=presetTypeFor(a);
   if(calcTab==='presets'&&!pt)calcTab='sets';
   cTabs.innerHTML='';
@@ -715,7 +741,7 @@ function renderCalc(){
   el('div','width:50px;text-align:center;color:#a1a1a6;align-self:center',cNav,(calcPage+1)+'/'+pages).className='mono';
   key(cNav,'▶','height:30px;flex:1',()=>{if(calcPage<pages-1){calcPage++;renderCalc();}});
 }
-function openCalc(i){calcIdx=i;calcTxt='';calcPage=0;calcTab='sets';calcShow();calc.style.display='flex';renderCalc();}
+function openCalc(i){calcIdx=i;calcTxt='';calcMode='val';calcPage=0;calcTab='sets';calcShow();calc.style.display='flex';renderCalc();}
 function closeCalc(){calc.style.display='none';calcIdx=-1;}
 function stepCalc(d){let n=calcIdx;for(let k=0;k<5;k++){n=(n+d+5)%5;if(encSlot[n])break;}calcIdx=n;calcTxt='';calcPage=0;calcShow();renderCalc();}
 function showTab(t){
