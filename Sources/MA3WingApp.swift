@@ -2,12 +2,13 @@ import SwiftUI
 
 @main
 struct MA3WingApp: App {
-    @StateObject private var state = ConsoleState()
-
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(state)
+            WebContainer()
+                .ignoresSafeArea()
+                .statusBarHidden(true)
+                .persistentSystemOverlays(.hidden)
+                .onAppear { UIApplication.shared.isIdleTimerDisabled = true }   // ekran nie gasnie podczas pracy
         }
     }
 }

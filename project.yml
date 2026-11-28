@@ -1,21 +1,26 @@
 name: MA3Wing
 options:
-  bundleIdPrefix: com.example
+  bundleIdPrefix: com.szafranski
   deploymentTarget:
     iOS: "16.0"
 targets:
   MA3Wing:
     type: application
     platform: iOS
-    sources: [Sources]
+    sources:
+      - path: Sources
+      - path: web/index.html
+        buildPhase: resources
+      - path: Support/Assets.xcassets
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.ma3wing
-        TARGETED_DEVICE_FAMILY: "1,2"
+        PRODUCT_BUNDLE_IDENTIFIER: com.szafranski.ma3wing
+        TARGETED_DEVICE_FAMILY: "2"
         SWIFT_VERSION: "5.0"
         GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "0.1"
+        MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Support/Info.plist
       properties:
@@ -23,10 +28,11 @@ targets:
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UIStatusBarHidden: true
-        NSLocalNetworkUsageDescription: "Aplikacja wysyła komendy OSC do konsoli grandMA3 w sieci lokalnej."
-        UISupportedInterfaceOrientations:
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
+        UIViewControllerBasedStatusBarAppearance: false
+        NSLocalNetworkUsageDescription: "MA3 Wing wysyła i odbiera OSC z grandMA3 (onPC lub konsola) w sieci lokalnej."
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight

@@ -84,10 +84,22 @@ function keyMsg(n,d){
   if(!d&&swallowed.has(n)){swallowed.delete(n);return;}
   tx('/Page'+S.page+'/Key'+n,'i',d?1:0);
 }
+// iPad app (WKWebView): window.MA3_CFG comes from the app. mode 'direct' = the app itself talks OSC to MA
+// (WebSocket is replaced by the app's native link), mode 'bridge' = through the laptop bridge like in Safari.
+const NATIVE=!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.ma);
+const CFG=window.MA3_CFG||{mode:'direct',ip:'',send:8000,recv:9000,prefix:'gma3',bridge:''};
+function linkName(){if(!NATIVE)return location.host;return CFG.mode==='bridge'?'laptop '+CFG.bridge:'MA '+(CFG.ip||'?')+':'+CFG.send;}
 function connect(){
-  if(!/^https?:/.test(location.protocol)){hostEl.textContent='otwórz przez adres laptopa';return;}
-  try{ws=new WebSocket('ws://'+location.host+'/ws');}catch(e){setTimeout(connect,2000);return;}
-  ws.onopen=()=>{wsOk=true;lastMirror=null;setTimeout(mirrorCmd,50);dotEl.style.background='#34c759';hostEl.textContent='połączono: '+location.host;};
+  let url;
+  if(NATIVE){
+    if(CFG.mode==='bridge'){if(!CFG.bridge){hostEl.textContent='ustaw adres laptopa (⚙)';return;}url='ws://'+CFG.bridge+'/ws';}
+    else{if(!CFG.ip){hostEl.textContent='ustaw adres MA (⚙)';return;}url='native://osc';}
+  } else {
+    if(!/^https?:/.test(location.protocol)){hostEl.textContent='otwórz przez adres laptopa';return;}
+    url='ws://'+location.host+'/ws';
+  }
+  try{ws=new WebSocket(url);}catch(e){setTimeout(connect,2000);return;}
+  ws.onopen=()=>{wsOk=true;lastMirror=null;setTimeout(mirrorCmd,50);dotEl.style.background='#34c759';hostEl.textContent='połączono: '+linkName();};
   ws.onclose=()=>{wsOk=false;dotEl.style.background='#ff453a';hostEl.textContent='brak połączenia – ponawiam…';setTimeout(connect,1500);};
   ws.onerror=()=>{try{ws.close()}catch(e){}};
   ws.onmessage=e=>{String(e.data).split('\n').forEach(l=>{try{feedback(l);}catch(err){}});};
@@ -95,8 +107,14 @@ function connect(){
 // feedback from onPC: "fb<TAB>/gma3/Page1/Fader201<TAB>65"
 let redrawPending=false;
 function scheduleRedraw(){if(redrawPending)return;redrawPending=true;requestAnimationFrame(()=>{redrawPending=false;redrawAll.forEach(f=>f());});}
+// show data (names, pools, layouts...) remembered on the iPad, replayed at start
+const SHOWKEY='ma3wing.show';let showMap={},showDirty=false;
+try{showMap=JSON.parse(localStorage.getItem(SHOWKEY)||'{}')||{};}catch(e){showMap={};}
+setInterval(()=>{if(!showDirty)return;showDirty=false;try{localStorage.setItem(SHOWKEY,JSON.stringify(showMap));}catch(e){}},5000);
+function rememberShow(k,v){if(/^(\/Page|SEL$|ATTR|CMDLINE|KEYS)/.test(k))return;if(showMap[k]!==v){showMap[k]=v;showDirty=true;}}
 function feedback(line){
   const p=line.split('\t');if(p[0]!=='fb')return;
+  rememberShow(p[1]||'',p[2]||'');
   if(/^ATTR/.test(p[1]||'')){attrFeedback(p[1],p[2]||'');return;}
   if(/^EXEC\d+$/.test(p[1]||'')){applyExec(+p[1].slice(4),p[2]||'');return;}
   if(/^(GRP|PRE\d+\.)/.test(p[1]||'')){poolFeedback(p[1],p[2]||'');return;}
@@ -327,6 +345,7 @@ const tabBtns={};
 const cl=el('div','flex:1;min-width:0;height:36px;background:#000;border-radius:6px;display:flex;align-items:center;gap:16px;padding:0 10px;overflow:hidden',top);cl.classList.add('cmdl');
 cmdEl=el('div','font:14px ui-monospace,Menlo,monospace;white-space:nowrap;flex:1;min-width:0;overflow:hidden',cl);
 lastEl=el('div','color:#8e8e93;white-space:nowrap;flex:none',cl,'—');lastEl.className='mono';
+if(NATIVE)key(top,'⚙','height:34px;width:34px;flex:none',()=>openSettings());
 key(top,'◐','height:34px;width:34px;flex:none',()=>{theme=isMA()?'classic':'ma';try{localStorage.setItem('ma3wing.theme',theme)}catch(e){}applyTheme();if(curTab==='Views')renderViews();});
 showCmd();
 
@@ -954,6 +973,40 @@ function renderCalc(){
 function openCalc(i){calcIdx=i;calcTxt='';calcMode='val';calcPage=0;calcTab='sets';calcShow();calc.style.display='flex';renderCalc();}
 function closeCalc(){calc.style.display='none';calcIdx=-1;}
 function stepCalc(d){let n=calcIdx;for(let k=0;k<5;k++){n=(n+d+5)%5;if(encSlot[n])break;}calcIdx=n;calcTxt='';calcPage=0;calcShow();renderCalc();}
+// ===== connection settings (iPad app only) =====
+function openSettings(){
+  const w=el('div','position:absolute;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:20',stage);
+  const b=el('div','width:560px;background:#1a1a1d;border:1px solid #3a3a3f;border-radius:14px;padding:18px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;font:14px -apple-system,sans-serif;color:#fff',w);
+  b.classList.add('mabody');
+  el('div','font:600 18px -apple-system,sans-serif',b,'Połączenie z grandMA3');
+  const c=Object.assign({},CFG);
+  const modeRow=el('div','display:flex;gap:6px',b);
+  const fields={};
+  const LBL='width:170px;color:#a1a1a6;flex:none';
+  function field(name,label,ph,type){const r=el('div','display:flex;align-items:center;gap:10px',b);el('div',LBL,r,label);
+    const i=el('input','flex:1;height:38px;background:#000;color:#ffc71a;border:1px solid #3a3a3f;border-radius:6px;padding:0 10px;font:16px ui-monospace,Menlo,monospace',r);
+    i.value=c[name]==null?'':c[name];i.placeholder=ph;i.type=type||'text';i.setAttribute('autocapitalize','off');i.setAttribute('autocorrect','off');
+    fields[name]=r;i.addEventListener('input',()=>{c[name]=type==='number'?+i.value:i.value.trim();});return r;}
+  field('ip','IP MA (onPC / konsola)','np. 192.168.124.162');
+  field('send','Port OSC MA (Receive)','8000','number');
+  field('recv','Port na iPadzie (Send z MA)','9000','number');
+  field('prefix','Prefix OSC','gma3');
+  field('bridge','Adres laptopa z mostem','np. 192.168.124.162:8090');
+  const note=el('div','color:#8e8e93;font-size:12px;line-height:1.45',b,'');
+  function paintMode(){modeRow.innerHTML='';
+    [['direct','Bezpośrednio do MA'],['bridge','Przez laptopa (most)']].forEach(m=>{const on=c.mode===m[0];
+      key(modeRow,m[1],'height:40px;flex:1'+(on?';background:#ffc71a;color:#1a1400':''),()=>{c.mode=m[0];paintMode();});});
+    ['ip','send','recv','prefix'].forEach(n=>fields[n].style.display=c.mode==='direct'?'flex':'none');
+    fields.bridge.style.display=c.mode==='bridge'?'flex':'none';
+    note.innerHTML=c.mode==='direct'
+      ?'W MA (Menu → In &amp; Out → OSC) linia: <b>Destination IP = adres iPada</b>, port jak „Port na iPadzie”, Send, Receive i Receive Command = Yes. Wtyczkę MA3Wing uruchom w trybie sieciowym (OSC_LINE = numer tej linii) – wtedy przyjdą nazwy, pule, layouty i zaznaczenie.'
+      :'Jak w Safari: na laptopie uruchom „Uruchom MA3 Wing.bat” i wpisz adres pokazany w oknie mostu (bez http://).';}
+  paintMode();
+  const fr=el('div','display:flex;gap:8px;margin-top:6px',b);
+  key(fr,'Anuluj','height:44px;flex:1',()=>w.remove());
+  key(fr,'Zapisz i połącz','height:44px;flex:2;background:#1f7a3c;color:#fff',()=>{
+    try{window.webkit.messageHandlers.ma.postMessage('!config\t'+JSON.stringify(c));}catch(e){}w.remove();});
+}
 function showTab(t){
   curTab=t;poolPage=0;
   const wing=t==='Wing',lay=t==='Views';
@@ -988,7 +1041,9 @@ document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 window.__fb=feedback;   // test hook
 fit();
+Object.keys(showMap).forEach(k=>{try{feedback('fb\t'+k+'\t'+showMap[k]);}catch(e){}});
 connect();
+if(NATIVE&&((CFG.mode!=='bridge'&&!CFG.ip)||(CFG.mode==='bridge'&&!CFG.bridge)))setTimeout(openSettings,300);
 })();
 </script>
 </body>
