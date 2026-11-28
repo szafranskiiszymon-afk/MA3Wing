@@ -197,19 +197,31 @@ if (Test-Path $CacheFile) {
 }
 # --- obrazki gobo: indeks plikow z instalacji / biblioteki MA (budowany przy pierwszym zapytaniu) ---
 $goboIndex = $null
+$goboMiss = 0
 function Find-GoboImage([string]$name) {
     if ($null -eq $script:goboIndex) {
         $script:goboIndex = @{}
-        $roots = @("$env:ProgramData\MALightingTechnology", "$env:LOCALAPPDATA\MALightingTechnology",
-                   "$env:APPDATA\MALightingTechnology", "$env:USERPROFILE\MALightingTechnology",
-                   "${env:ProgramFiles}\MALightingTechnology") | Where-Object { $_ -and (Test-Path $_) }
+        $roots = New-Object System.Collections.ArrayList
+        # katalog instalacji onPC (z uruchomionego procesu) - tam MA trzyma biblioteke obrazkow
+        Get-Process app_gma3, gma3* -ErrorAction SilentlyContinue | ForEach-Object {
+            try { $d = Split-Path (Split-Path $_.Path -Parent) -Parent; if ($d -and -not $roots.Contains($d)) { [void]$roots.Add($d) } } catch {}
+        }
+        foreach ($r in @("$env:ProgramData\MALightingTechnology", "$env:LOCALAPPDATA\MALightingTechnology", "$env:APPDATA\MALightingTechnology",
+                         "$env:USERPROFILE\MALightingTechnology", "${env:ProgramFiles}\MALightingTechnology", "${env:ProgramFiles}\MA Lighting Technologies")) {
+            if ($r -and (Test-Path $r) -and -not $roots.Contains($r)) { [void]$roots.Add($r) }
+        }
         foreach ($r in $roots) {
-            Get-ChildItem -Path $r -Recurse -File -Include *.png, *.jpg, *.jpeg, *.svg -ErrorAction SilentlyContinue |
+            Get-ChildItem -LiteralPath $r -Recurse -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Extension -match '^\.(png|jpe?g|svg|bmp)$' } |
                 ForEach-Object { $k = $_.Name.ToLowerInvariant(); if (-not $script:goboIndex.ContainsKey($k)) { $script:goboIndex[$k] = $_.FullName } }
         }
-        Write-Host "  obrazki gobo: znaleziono $($script:goboIndex.Count) plikow w: $($roots -join ', ')" -ForegroundColor DarkGray
+        Write-Host "  obrazki gobo: znaleziono $($script:goboIndex.Count) plikow w: $($roots -join ' | ')" -ForegroundColor DarkGray
+        $robe = @($script:goboIndex.Keys | Where-Object { $_ -like 'robe@*' }).Count
+        Write-Host "  obrazki gobo: w tym Robe@*: $robe" -ForegroundColor DarkGray
     }
-    return $script:goboIndex[$name]
+    $f = $script:goboIndex[$name]
+    if (-not $f -and $script:goboMiss -lt 5) { $script:goboMiss++; Write-Host "  obrazek gobo nie znaleziony: $name" -ForegroundColor Yellow }
+    return $f
 }
 function Save-Cache {
     if (-not $script:cacheDirty) { return }

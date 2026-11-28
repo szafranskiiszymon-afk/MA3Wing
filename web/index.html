@@ -657,7 +657,7 @@ function typeFeedback(k,v){
 function goboUrl(f){if(!f)return '';let base='';if(NATIVE){if(CFG.mode!=='bridge')return '';base='http://'+CFG.bridge;}return base+'/gobo/'+encodeURIComponent(f.toLowerCase());}
 function setIcon(s,size){
   const u=goboUrl(s.img);
-  if(u)return '<img src="'+u+'" style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:#000;object-fit:contain" onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{textContent:\'\'}))">';
+  if(u)return '<img src="'+u+'" style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:#000;object-fit:contain" onerror="this.outerHTML=\'<span style=&quot;display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:50%;border:2px dashed #a32a26;box-sizing:border-box&quot; title=&quot;brak pliku na laptopie&quot;></span>\'">';
   if(s.rgb)return '<span style="display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:50%;background:#'+s.rgb+';border:1px solid #555"></span>';
   if(/^open$/i.test(s.name))return '<span style="display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:50%;background:#fff"></span>';
   return '';
@@ -681,6 +681,8 @@ function renderGobo(){
   types.forEach((x,i)=>{const on=i===goboType;
     key(hr,esc(x.name)+'<span class="sub">'+(x.fids?x.fids.length:0)+' szt.</span>','height:40px;flex:1;min-width:0;font-size:12px;flex-direction:column'+(on?';background:#ffc71a;color:#1a1400':''),()=>{goboType=i;renderGobo();});});
   const attrs=(t.attrs||[]).filter(a=>a&&a.sets.length);
+  const nImg=attrs.reduce((n,a)=>n+a.sets.filter(s=>s.img).length,0);
+  el('div','font-size:10px;color:#8e8e93;flex:none',goboArea,nImg?('obrazki z MA: '+nImg+(goboUrl('x')?'':' – widoczne tylko przez laptopa (most)')+'; czerwone kółko = most nie znalazł pliku'):'wtyczka nie podała obrazków (potrzebna v20)');
   // main wheels: attribute's own function with 3+ slots; other functions (spin, shake...) as small buttons
   const wheels=attrs.filter(a=>a.sets.filter(s=>s.fn===a.name).length>=3);
   if(!wheels.length){el('div','color:#8e8e93;font-size:13px;padding:10px',goboArea,'Ten typ nie ma kół gobo.');return;}
