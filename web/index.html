@@ -159,7 +159,10 @@ function applyExec(n,v){
 // command goes over OSC, e.g. "Store Preset 2.3".
 let maTyped=true;      // false when the bridge could not type into onPC (minimized)
 function completeWith(obj){
-  const c=S.cmd.trim();typeKey('{ESC}');cmdSend(c+' '+obj);S.cmd='';showCmd();
+  let c=S.cmd.trim();
+  // Assign/Copy/Move/Clone need "At" before the target: "Assign Group 5 At Exec 201"
+  if(/^(Assign|Copy|Move|Clone)\b/i.test(c)&&/\d/.test(c)&&!/\b(At|Thru|\+|-)$/i.test(c))c+=' At';
+  typeKey('{ESC}');cmdSend(c+' '+obj);S.cmd='';showCmd();
 }
 function typeText(t){if(wsOk){try{ws.send('!keys\tt\t'+t);}catch(e){}}}
 function typeKey(k){if(wsOk){try{ws.send('!keys\tk\t'+k);}catch(e){}}}
