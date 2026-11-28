@@ -657,7 +657,7 @@ function typeFeedback(k,v){
 function goboUrl(f){if(!f)return '';let base='';if(NATIVE){if(CFG.mode!=='bridge')return '';base='http://'+CFG.bridge;}return base+'/gobo/'+encodeURIComponent(f.toLowerCase());}
 function setIcon(s,size){
   const u=goboUrl(s.img);
-  if(u)return '<img src="'+u+'" style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:#000;object-fit:contain" onerror="this.outerHTML=\'<span style=&quot;display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:50%;border:2px dashed #a32a26;box-sizing:border-box&quot; title=&quot;brak pliku na laptopie&quot;></span>\'">';
+  if(u)return '<img src="'+u+'" style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:#fff;object-fit:contain;box-shadow:0 0 0 1px #555" onerror="this.outerHTML=\'<span style=&quot;display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:50%;border:2px dashed #a32a26;box-sizing:border-box&quot; title=&quot;brak pliku na laptopie&quot;></span>\'">';
   if(s.rgb)return '<span style="display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:50%;background:#'+s.rgb+';border:1px solid #555"></span>';
   if(/^open$/i.test(s.name))return '<span style="display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:50%;background:#fff"></span>';
   return '';
