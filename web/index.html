@@ -86,7 +86,7 @@ function keyMsg(n,d){
 function connect(){
   if(!/^https?:/.test(location.protocol)){hostEl.textContent='otwórz przez adres laptopa';return;}
   try{ws=new WebSocket('ws://'+location.host+'/ws');}catch(e){setTimeout(connect,2000);return;}
-  ws.onopen=()=>{wsOk=true;dotEl.style.background='#34c759';hostEl.textContent='połączono: '+location.host;};
+  ws.onopen=()=>{wsOk=true;lastMirror=null;setTimeout(mirrorCmd,50);dotEl.style.background='#34c759';hostEl.textContent='połączono: '+location.host;};
   ws.onclose=()=>{wsOk=false;dotEl.style.background='#ff453a';hostEl.textContent='brak połączenia – ponawiam…';setTimeout(connect,1500);};
   ws.onerror=()=>{try{ws.close()}catch(e){}};
   ws.onmessage=e=>{String(e.data).split('\n').forEach(l=>{try{feedback(l);}catch(err){}});};
@@ -110,7 +110,13 @@ function feedback(line){
   scheduleRedraw();
 }
 function vib(){if(navigator.vibrate)try{navigator.vibrate(8)}catch(e){}}
-function showCmd(){if(!S.cmd.trim())S.storeOpt='';cmdEl.innerHTML='<span style="color:#ffc71a">['+S.page+']&gt;</span> '+S.cmd.replace(/</g,'&lt;')+(S.storeOpt?'<span style="color:#b4b3ff"> '+esc(S.storeOpt)+'</span>':'');}
+let lastMirror=null,mirrorT=null;
+function mirrorCmd(){   // show the iPad command line in onPC's command line (plugin v14 reads it)
+  const t=(S.cmd.trim()+(S.storeOpt?' '+S.storeOpt:'')).trim();
+  if(t===lastMirror)return;clearTimeout(mirrorT);
+  mirrorT=setTimeout(()=>{if(wsOk){try{ws.send('!cmdline\t-\t'+t);lastMirror=t;}catch(e){}}},40);
+}
+function showCmd(){setTimeout(mirrorCmd,0);if(!S.cmd.trim())S.storeOpt='';cmdEl.innerHTML='<span style="color:#ffc71a">['+S.page+']&gt;</span> '+S.cmd.replace(/</g,'&lt;')+(S.storeOpt?'<span style="color:#b4b3ff"> '+esc(S.storeOpt)+'</span>':'');}
 
 // momentary key (multi-touch safe)
 function key(parent,label,style,onDown,onUp,sub){

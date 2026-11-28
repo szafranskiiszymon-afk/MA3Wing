@@ -1,4 +1,4 @@
-# MA3 Wing - most: strona WWW (iPad) -> OSC -> grandMA3 onPC
+﻿# MA3 Wing - most: strona WWW (iPad) -> OSC -> grandMA3 onPC
 # Uruchamiaj przez "Uruchom MA3 Wing.bat". Zamkniecie okna = koniec.
 
 # ===== USTAWIENIA =====
@@ -165,7 +165,9 @@ $cancel = [Threading.CancellationToken]::None
 $lastFaderLog = [DateTime]::MinValue
 $lastFbLog = @{}
 $fbCache = [ordered]@{}   # ostatnie pozycje faderow z MA, dla nowo podlaczonych iPadow
-$StateFile = Join-Path $env:TEMP 'MA3Wing-faders.txt'   # zapisuje go wtyczka MA3Wing.lua w onPC
+$StateFile = Join-Path $env:TEMP 'MA3Wing-faders.txt'
+$CmdLineFile = Join-Path $env:TEMP 'MA3Wing-cmdline.txt'   # linia komend z iPada, czyta ja wtyczka
+try { [IO.File]::WriteAllText($CmdLineFile, '', (New-Object Text.UTF8Encoding $false)) } catch {}   # zapisuje go wtyczka MA3Wing.lua w onPC
 $stateStamp = [DateTime]::MinValue
 $stateSeen = $false
 $lastStateLog = [DateTime]::MinValue
@@ -276,6 +278,10 @@ function Invoke-Line([string]$line) {
     if ($parts.Count -lt 3) { return }
     if ($parts[0] -eq '!keys') { Send-MAKeys $parts[1] $parts[2]; return }
     if ($parts[0] -eq '!hold') { Send-MAHold $parts[1] $parts[2]; return }
+    if ($parts[0] -eq '!cmdline') {      # linia komend z iPada -> plik dla wtyczki (pokazuje ja w linii komend onPC)
+        try { [IO.File]::WriteAllText($script:CmdLineFile, $parts[2], (New-Object Text.UTF8Encoding $false)) } catch {}
+        return
+    }
     $addr = $parts[0]
     if ($Prefix) { $addr = '/' + $Prefix + $addr }
     try {

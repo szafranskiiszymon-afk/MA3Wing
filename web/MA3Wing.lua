@@ -311,6 +311,67 @@ local function cmdLine()
     return nil
 end
 
+-- ===== linia komend z iPada -> linia komend onPC (tylko podglad; komenda idzie przez OSC) =====
+local function cmdlineFile()
+    local dir = (os and os.getenv) and (os.getenv('TEMP') or os.getenv('TMP')) or nil
+    return (dir or 'C:\\Windows\\Temp') .. '\\MA3Wing-cmdline.txt'
+end
+local mirrorMethod, mirrorFailed, mirrorDumped, mirrorAnnounced = nil, false, false, false
+local function readBack(co, p)
+    local ok, v = pcall(function() return co[p] end)
+    if ok then return v end
+    return nil
+end
+local function setByProperty(text)
+    local ok, co = pcall(CmdObj)
+    if not ok or co == nil then return false end
+    local names = {'cmdtext', 'text', 'input', 'cmdline', 'commandline', 'edittext', 'cmd'}
+    if mirrorMethod and mirrorMethod:sub(1, 5) == 'prop:' then names = {mirrorMethod:sub(6)} end
+    for _, p in ipairs(names) do
+        pcall(function() co[p] = text end)
+        if readBack(co, p) == text then mirrorMethod = 'prop:' .. p; return true end
+        pcall(function() co:Set(p, text) end)
+        if readBack(co, p) == text then mirrorMethod = 'prop:' .. p; return true end
+    end
+    return false
+end
+local function dumpCmdObj()
+    if mirrorDumped then return end
+    mirrorDumped = true
+    local ok, co = pcall(CmdObj)
+    if not ok or co == nil then say('CmdObj niedostepny'); return end
+    local parts = {}
+    local okc, cnt = pcall(function() return co:PropertyCount() end)
+    if okc and type(cnt) == 'number' then
+        for i = 0, cnt - 1 do
+            local okn, n = pcall(function() return co:PropertyName(i) end)
+            if okn and n then parts[#parts + 1] = tostring(n) .. '=' .. tostring(readBack(co, n)) end
+        end
+    end
+    say('nie umiem wpisac do linii komend - wlasciwosci CmdObj (przeslij zrzut): ' .. table.concat(parts, '  '))
+end
+local function setCmdLine(text)
+    if mirrorFailed then return end
+    if setByProperty(text) then return end
+    dumpCmdObj()
+    mirrorFailed = true
+    say('podglad linii komend z iPada wylaczony (komendy z iPada dzialaja normalnie)')
+end
+local lastMirror = nil
+local function mirrorTick()
+    local f = io.open(cmdlineFile(), 'r')
+    if not f then return end
+    local t = f:read('*a') or ''
+    f:close()
+    t = t:gsub('[\r\n]', '')
+    if t ~= lastMirror then
+        lastMirror = t
+        local ok, err = pcall(setCmdLine, t)
+        if not ok then say('linia komend: ' .. tostring(err)); mirrorFailed = true end
+        if mirrorMethod and not mirrorAnnounced then mirrorAnnounced = true; say('podglad linii komend z iPada: OK (' .. mirrorMethod .. ')') end
+    end
+end
+
 local function writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys)
     local f, err = io.open(file, 'w')
     if not f then return false, err end
@@ -355,7 +416,7 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v13), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v14), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
@@ -371,6 +432,7 @@ local function run()
             local l, sig = attrList()
             if sig ~= lastSig then attrs, lastSig, changed = l, sig, true end
         end
+        mirrorTick()
         cmd = cmdLine()
         if cmd ~= lastCmd then lastCmd, changed = cmd, true end
         if tick % 50 == 3 then                      -- layouty co ~5 s
