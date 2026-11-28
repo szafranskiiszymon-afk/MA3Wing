@@ -204,7 +204,9 @@ function holdKey(dir,letter){}
 function holdBtn(parent,label,letter,bg,fg){
   let held=false,timer=null,longp=false;
   return key(parent,label,'height:auto;min-height:0;background:'+bg+';color:'+fg,
-    ()=>{holdKey('d',letter);held=true;longp=false;const c=S.cmd;if((c.trim().split(/\s+/).pop()||'')!==label)S.cmd=c+(c&&!/ $/.test(c)?' ':'')+label+' ';showCmd();
+    ()=>{holdKey('d',letter);held=true;longp=false;const c=S.cmd;const lw=(c.trim().split(/\s+/).pop()||'');
+      if(lw===label&&label==='Update'&&c.trim()==='Update'){cmdSend('Update');S.cmd='';showCmd();osc('Update Update = menu Update');return;}
+      if(lw!==label)S.cmd=c+(c&&!/ $/.test(c)?' ':'')+label+' ';showCmd();
       osc(label+(letter==='S'?' – wybierz cel (przytrzymaj = opcje Store)':' – wybierz cel'));
       if(letter==='S'){clearTimeout(timer);timer=setTimeout(()=>{if(held){holdKey('u',letter);held=false;longp=true;openStoreOpts();}},350);}},
     ()=>{clearTimeout(timer);if(held){holdKey('u',letter);held=false;}});
@@ -253,11 +255,21 @@ function storeTargetExists(obj){
   m=/^Group (\d+)$/.exec(obj);if(m){const it=POOLS.GRP.items[+m[1]];return it?{label:'Group '+m[1]+' "'+it.name+'"'}:null;}
   return null;
 }
+const KEYCYCLE={Assign:['Assign','Label'],Fixture:['Fixture','Selection'],Channel:['Channel','Generic'],
+  Group:['Group','World','Filter'],Preset:['Preset','Attribute','Gel'],On:['On','Call'],Edit:['Edit','EditSetting'],
+  Delete:['Delete','Remove','Release'],Copy:['Copy','Paste','Insert'],If:['If','IfActive','IfProg'],
+  Move:['Move','Exchange'],Cue:['Cue','Part'],Goto:['Goto','Load'],Store:['Store'],Time:['Time']};
 function pad(kind,v){
   const c=S.cmd;
   if(kind==='d'){const t=(c&&!/[0-9. ]$/.test(c))?' '+v:v;typeText(t);S.cmd=c+t;}
-  else if(kind==='dot'){typeText('.');S.cmd=c+'.';}
-  else if(kind==='kw'){const last=(c.trim().split(/\s+/).pop()||'');if(last.toLowerCase()===String(v).toLowerCase()){showCmd();return;}
+  else if(kind==='dot'){if(/\.$/.test(c)){S.cmd=c.slice(0,-1).replace(/\s*$/,' ')+'Zero ';osc('. . = Zero');}else{typeText('.');S.cmd=c+'.';}}
+  else if(kind==='kw'){
+    // repeated presses like on the console: Assign Assign = Label, Copy Copy = Paste, Group Group = World ...
+    const words=c.trim()?c.trim().split(/\s+/):[],last=(words[words.length-1]||'');
+    const chain=KEYCYCLE[v],idx=chain?chain.findIndex(w=>w.toLowerCase()===last.toLowerCase()):-1;
+    if(v==='At'&&/^at$/i.test(last)){cmdSend(c.trim()+' Normal');S.cmd='';osc('At At = Normal');showCmd();return;}
+    if(v==='Off'&&/^off$/i.test(last)){S.cmd='';osc('Off Off = czyści linię komend');showCmd();return;}
+    if(idx>=0){words[words.length-1]=chain[(idx+1)%chain.length];S.cmd=words.join(' ')+' ';osc(v+' ×'+(idx+2)+' = '+words[words.length-1]);showCmd();return;}
     const t=(c&&!/ $/.test(c)?' ':'')+v+' ';typeText(t);S.cmd=c+t;}
   else if(kind==='dir')cmdSend(v);
   else if(kind==='please'){if(c.trim()){typeKey('{ESC}');cmdSend(c.trim()+(S.storeOpt&&/^Store\b/i.test(c.trim())?' '+S.storeOpt:''));}else typeKey('{ENTER}');S.cmd='';S.storeOpt='';}
