@@ -322,16 +322,30 @@ local function readBack(co, p)
     if ok then return v end
     return nil
 end
+local function norm(v) return (tostring(v or ''):gsub('^%s+', ''):gsub('%s+$', '')) end
 local function setByProperty(text)
     local ok, co = pcall(CmdObj)
     if not ok or co == nil then return false end
-    local names = {'cmdtext', 'text', 'input', 'cmdline', 'commandline', 'edittext', 'cmd'}
-    if mirrorMethod and mirrorMethod:sub(1, 5) == 'prop:' then names = {mirrorMethod:sub(6)} end
-    for _, p in ipairs(names) do
-        pcall(function() co[p] = text end)
-        if readBack(co, p) == text then mirrorMethod = 'prop:' .. p; return true end
-        pcall(function() co:Set(p, text) end)
-        if readBack(co, p) == text then mirrorMethod = 'prop:' .. p; return true end
+    if mirrorMethod then                       -- sposob juz znany: po prostu wpisz
+        local p = mirrorMethod:sub(6)
+        local okw = pcall(function() co[p] = text end)
+        if not okw then okw = pcall(function() co:Set(p, text) end) end
+        return okw
+    end
+    for _, p in ipairs({'cmdtext', 'text', 'input', 'cmdline', 'commandline', 'edittext', 'cmd'}) do
+        local probe = (text ~= '' and text) or 'MA3Wing'
+        pcall(function() co[p] = probe end)
+        if norm(readBack(co, p)) == norm(probe) then
+            mirrorMethod = 'prop:' .. p
+            if probe ~= text then pcall(function() co[p] = text end) end
+            return true
+        end
+        pcall(function() co:Set(p, probe) end)
+        if norm(readBack(co, p)) == norm(probe) then
+            mirrorMethod = 'prop:' .. p
+            if probe ~= text then pcall(function() co:Set(p, text) end) end
+            return true
+        end
     end
     return false
 end
@@ -353,6 +367,7 @@ end
 local function setCmdLine(text)
     if mirrorFailed then return end
     if setByProperty(text) then return end
+    if mirrorMethod then return end            -- pojedyncza nieudana proba: pomijamy, bez wylaczania
     dumpCmdObj()
     mirrorFailed = true
     say('podglad linii komend z iPada wylaczony (komendy z iPada dzialaja normalnie)')
@@ -416,7 +431,7 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v14), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v15), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
