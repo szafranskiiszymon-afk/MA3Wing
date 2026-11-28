@@ -51,6 +51,15 @@ local function children(h) local ok, c = pcall(function() return h:Children() en
 
 local lines = {}
 local function w(t) lines[#lines + 1] = t end
+local function get(h, k)
+    for _, n in ipairs({k, k:lower(), k:upper()}) do
+        local ok, v = pcall(function() return h[n] end)
+        if ok and v ~= nil then return v end
+        ok, v = pcall(function() return h:Get(n) end)
+        if ok and v ~= nil then return v end
+    end
+    return nil
+end
 local function tree(h, ind, depth, maxDepth, maxKids)
     w(ind .. '[' .. class(h) .. '] ' .. props(h))
     if depth >= maxDepth then return end
@@ -64,8 +73,20 @@ end
 local function run()
     local okv, ver = pcall(Version)
     w('MA3 Wing Dump v3 (presety Gobo)  ' .. os.date('%Y-%m-%d %H:%M:%S') .. '  wersja MA: ' .. (okv and tostring(ver) or '?'))
+    lines = {}
     local okl, list = pcall(ObjectList, 'Preset 3.1 Thru 3.1000')
     if not okl or type(list) ~= 'table' then list = {} end
+    if #list == 0 then                                  -- jak w glownej wtyczce: bezposrednio z DataPool
+        local okd, dp = pcall(DataPool)
+        local pp = okd and dp and get(dp, 'PresetPools') or nil
+        if isHandle(pp) then
+            for _, pool in ipairs(children(pp)) do
+                if tonumber(get(pool, 'No')) == 3 then list = children(pool) end
+            end
+            if #list == 0 then local ok3, pool = pcall(function() return pp[3] end); if ok3 and isHandle(pool) then list = children(pool) end end
+        end
+        w('(ObjectList pusty - odczyt z DataPool: ' .. #list .. ')')
+    end
     w('== Pula 3: ' .. #list .. ' presetow')
     for _, p in ipairs(list) do w(props(p)) end
     local want = { [2] = true, [3] = true, [145] = true, [146] = true, [180] = true, [181] = true, [201] = true, [202] = true, [216] = true }
