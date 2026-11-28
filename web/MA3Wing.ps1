@@ -195,6 +195,22 @@ if (Test-Path $CacheFile) {
         Write-Host "  wczytano zapamietane dane show ($($fbCache.Count) pozycji) - layouty, pule, nazwy" -ForegroundColor DarkGray
     } catch {}
 }
+# --- obrazki gobo: indeks plikow z instalacji / biblioteki MA (budowany przy pierwszym zapytaniu) ---
+$goboIndex = $null
+function Find-GoboImage([string]$name) {
+    if ($null -eq $script:goboIndex) {
+        $script:goboIndex = @{}
+        $roots = @("$env:ProgramData\MALightingTechnology", "$env:LOCALAPPDATA\MALightingTechnology",
+                   "$env:APPDATA\MALightingTechnology", "$env:USERPROFILE\MALightingTechnology",
+                   "${env:ProgramFiles}\MALightingTechnology") | Where-Object { $_ -and (Test-Path $_) }
+        foreach ($r in $roots) {
+            Get-ChildItem -Path $r -Recurse -File -Include *.png, *.jpg, *.jpeg, *.svg -ErrorAction SilentlyContinue |
+                ForEach-Object { $k = $_.Name.ToLowerInvariant(); if (-not $script:goboIndex.ContainsKey($k)) { $script:goboIndex[$k] = $_.FullName } }
+        }
+        Write-Host "  obrazki gobo: znaleziono $($script:goboIndex.Count) plikow w: $($roots -join ', ')" -ForegroundColor DarkGray
+    }
+    return $script:goboIndex[$name]
+}
 function Save-Cache {
     if (-not $script:cacheDirty) { return }
     if (([DateTime]::Now - $script:lastCacheSave).TotalSeconds -lt 10) { return }
@@ -404,6 +420,19 @@ try {
                         $bytes = [IO.File]::ReadAllBytes($IndexPath)
                         $res.ContentType = 'text/html; charset=utf-8'
                         $res.Headers.Add('Cache-Control', 'no-store')
+                    } elseif ($path.StartsWith('/gobo/')) {
+                        # obrazek gobo z biblioteki MA na tym laptopie (nazwa pliku ze slotu kola)
+                        $name = [Uri]::UnescapeDataString($path.Substring(6)).ToLowerInvariant()
+                        $file = Find-GoboImage $name
+                        if ($file) {
+                            $bytes = [IO.File]::ReadAllBytes($file)
+                            $res.ContentType = $(if ($file -match '\.jpe?g$') { 'image/jpeg' } elseif ($file -match '\.svg$') { 'image/svg+xml' } else { 'image/png' })
+                            $res.Headers.Add('Cache-Control', 'max-age=86400')
+                            $res.Headers.Add('Access-Control-Allow-Origin', '*')
+                        } else {
+                            $res.StatusCode = 404
+                            $bytes = [Text.Encoding]::UTF8.GetBytes('404')
+                        }
                     } else {
                         $res.StatusCode = 404
                         $bytes = [Text.Encoding]::UTF8.GetBytes('404')

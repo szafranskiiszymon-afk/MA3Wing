@@ -12,11 +12,11 @@ local function outPath()
     if os and os.getenv then
         local up = os.getenv('USERPROFILE')
         if up then
-            tries[#tries + 1] = up .. '\\OneDrive\\Desktop\\MA3\\MA3Wing-channelsets.txt'
-            tries[#tries + 1] = up .. '\\Desktop\\MA3Wing-channelsets.txt'
+            tries[#tries + 1] = up .. '\\OneDrive\\Desktop\\MA3\\MA3Wing-gobo.txt'
+            tries[#tries + 1] = up .. '\\Desktop\\MA3Wing-gobo.txt'
         end
         local t = os.getenv('TEMP') or os.getenv('TMP')
-        if t then tries[#tries + 1] = t .. '\\MA3Wing-channelsets.txt' end
+        if t then tries[#tries + 1] = t .. '\\MA3Wing-gobo.txt' end
     end
     tries[#tries + 1] = 'C:\\Windows\\Temp\\MA3Wing-channelsets.txt'
     for _, p in ipairs(tries) do
@@ -80,7 +80,7 @@ end
 
 local function run()
     local okv, ver = pcall(Version)
-    w('MA3 Wing Dump  ' .. os.date('%Y-%m-%d %H:%M:%S') .. '  wersja MA: ' .. (okv and tostring(ver) or '?'))
+    w('MA3 Wing Dump v2  ' .. os.date('%Y-%m-%d %H:%M:%S') .. '  wersja MA: ' .. (okv and tostring(ver) or '?'))
     local ok, sf = pcall(SelectionFirst)
     if not ok or sf == nil then say('BLAD: nic nie jest zaznaczone. Zaznacz jedno urzadzenie i uruchom ponownie.'); return end
     w('SelectionFirst = ' .. tostring(sf))
@@ -133,6 +133,29 @@ local function run()
             w('Logical channel: NIE ZNALEZIONY')
         end
     end
+
+    -- koła (gobo / kolor / pryzmat) - sloty i ewentualne obrazki
+    w(''); w('== KOLA (Wheel) - sloty, obrazki')
+    local seenW = {}
+    for _, ui in ipairs(chans) do
+        local oku, u = pcall(GetUIChannel, ui)
+        local lc = (oku and type(u) == 'table') and (u.logical_channel or u.logicalchannel) or nil
+        if isHandle(lc) then
+            for _, cf in ipairs(children(lc)) do
+                local okw, wh = pcall(function() return cf.wheel end)
+                if okw and isHandle(wh) then
+                    local key = str(wh)
+                    if not seenW[key] then
+                        seenW[key] = true
+                        w(''); w('---------- Wheel ' .. key .. '  (funkcja ' .. str(cf) .. ')')
+                        tree(wh, '  ', 0, 3)
+                    end
+                end
+            end
+        end
+    end
+    local okg, gp = pcall(function() return ShowData().MediaPools end)
+    if okg and isHandle(gp) then w(''); w('== MediaPools'); tree(gp, '  ', 0, 2) end
 
     local f, path = outPath()
     if not f then say('BLAD: nie moge zapisac pliku'); return end

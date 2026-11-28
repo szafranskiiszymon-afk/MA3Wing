@@ -83,13 +83,23 @@ local function channelInfoRaw(lc)
             if mn == nil then
                 mn = tonumber(prop(cf, 'physicalfrom')); mx = tonumber(prop(cf, 'physicalto'))
             end
+            local slots = nil
+            local okw, wh = pcall(function() return cf.wheel end)
+            if okw and wh ~= nil and type(wh) ~= 'string' then slots = children(wh) end
             for _, cs in ipairs(children(cf)) do
                 local n = clean(prop(cs, 'name')):gsub('^%s+', ''):gsub('%s+$', '')
+                local img, rgba = '', ''
+                local si = tonumber(prop(cs, 'wheelslotindex'))
+                if slots and si and slots[si] then
+                    img = tostring(prop(slots[si], 'mediafilename') or ''):match('([^/\\]+)$') or ''
+                    local c = tostring(prop(slots[si], 'imagergba') or '')
+                    if c:match('^%x%x%x%x%x%x%x%x$') and c:upper() ~= 'FFFFFFFF' then rgba = c:sub(1, 6) end
+                end
                 local d1 = tonumber(prop(cs, 'dmxfrom')); local d2 = tonumber(prop(cs, 'dmxto'))
                 if n ~= '' and n ~= 'No Feature' and d1 and d2 and #sets < 120 then
                     local d = math.floor((d1 + d2) / 2)
                     if d > 16777215 then d = 16777215 end
-                    sets[#sets + 1] = clean(fattr) .. '~' .. n .. '~' .. d
+                    sets[#sets + 1] = clean(fattr) .. '~' .. n .. '~' .. d .. '~' .. clean(img) .. '~' .. rgba
                 end
             end
         end
@@ -128,10 +138,8 @@ local function selectionList()
     end
     return table.concat(ids, ',')
 end
-local function attrList()
+local function attrsOf(sf, onlyGroups)
     local list = {}
-    local ok, sf = pcall(SelectionFirst)
-    if not ok or sf == nil then return list, 'none' end
     local ok2, chans = pcall(GetUIChannels, sf)
     if not ok2 or type(chans) ~= 'table' then return list, 'none' end
     local seen = {}
@@ -148,13 +156,68 @@ local function attrList()
                     local okp, par = pcall(function() return feat:Parent() end)
                     if okp and par ~= nil then grp = tostring(prop(par, 'name') or '') end
                 end
-                local okc, mn, mx, sets = pcall(channelInfo, ui)
-                if not okc then mn, mx, sets = '', '', '' end
-                list[#list + 1] = { grp, name, pretty, mn, mx, sets }
+                if onlyGroups == nil or onlyGroups[grp] or name:match('^Prism') then
+                    local okc, mn, mx, sets = pcall(channelInfo, ui)
+                    if not okc then mn, mx, sets = '', '', '' end
+                    list[#list + 1] = { grp, name, pretty, mn, mx, sets }
+                end
             end
         end
     end
+    return list
+end
+local function attrList()
+    local ok, sf = pcall(SelectionFirst)
+    if not ok or sf == nil then return {}, 'none' end
+    local list = attrsOf(sf)
     return list, tostring(sf) .. ':' .. #list
+end
+-- typy urzadzen w zaznaczeniu (do zakladki Gobo): { {name, fids={...}, attrs={...gobo...}}, ... }
+local typeCache = {}
+local function typeOf(sf)
+    local okc, chans = pcall(GetUIChannels, sf)
+    if not okc or type(chans) ~= 'table' or chans[1] == nil then return nil end
+    local lc = logicalChannel(chans[1])
+    if lc == nil then return nil end
+    local h = lc
+    for _ = 1, 12 do
+        local okp, par = pcall(function() return h:Parent() end)
+        if not okp or par == nil then break end
+        h = par
+        local okk, cls = pcall(function() return h:GetClass() end)
+        if okk and cls == 'FixtureType' then
+            local oka, addr = pcall(function() return h:ToAddr() end)
+            return (oka and addr) or tostring(prop(h, 'name')), tostring(prop(h, 'name') or '?')
+        end
+    end
+    return nil
+end
+local GOBO_GROUPS = { Gobo = true }
+local function selectionTypes()
+    local types, byKey = {}, {}
+    local ok, idx = pcall(SelectionFirst)
+    local guard = 0
+    while ok and idx ~= nil and guard < 3000 do
+        guard = guard + 1
+        local key, name = typeOf(idx)
+        if key then
+            local t = byKey[key]
+            if not t then
+                if #types >= 6 then break end
+                t = { name = name, fids = {}, sf = idx, key = key }
+                byKey[key] = t; types[#types + 1] = t
+            end
+            local oks, sub = pcall(GetSubfixture, idx)
+            local fid = oks and sub and tonumber(prop(sub, 'fid'))
+            if fid then t.fids[#t.fids + 1] = fid end
+        end
+        ok, idx = pcall(SelectionNext, idx)
+    end
+    for _, t in ipairs(types) do
+        if not typeCache[t.key] then typeCache[t.key] = attrsOf(t.sf, GOBO_GROUPS) end
+        t.attrs = typeCache[t.key]
+    end
+    return types
 end
 
 -- nazwy i kolory (Appearance) obiektow pod executorami
@@ -211,7 +274,7 @@ local function execInfo()
 end
 
 -- zawartosc pul: grupy i presety (numer -> nazwa|kolor) + lista istniejacych numerow
-local PRESET_POOLS = {2, 6}          -- 2 = Position, 6 = Focus
+local PRESET_POOLS = {2, 3, 6}       -- 2 = Position, 3 = Gobo, 6 = Focus
 local POOL_MAX = 500
 -- drugi sposob: bezposrednio z DataPool (gdy ObjectList nic nie zwraca)
 local function viaDataPool(kind, t)
@@ -436,7 +499,7 @@ local function mirrorTick()
 end
 
 -- wszystkie dane jako lista {klucz, wartosc}
-local function stateLines(page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel)
+local function stateLines(page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel, types)
     local L = {}
     local function put(k, v) L[#L + 1] = {k, tostring(v)} end
     for _, base in ipairs(ROWS) do
@@ -447,6 +510,16 @@ local function stateLines(page, vals, attrs, execs, cmd, pools, poolKeys, lays, 
     if pools and poolKeys then for _, k in ipairs(poolKeys) do put(k, pools[k]) end end
     if lays and layKeys then for _, k in ipairs(layKeys) do put(k, lays[k]) end end
     if sel ~= nil then put('SEL', sel) end
+    if types ~= nil then
+        put('TYPEN', #types)
+        for i, t in ipairs(types) do
+            put('TYPE' .. i, clean(t.name) .. '|' .. table.concat(t.fids, ','))
+            put('TATTRN' .. i, #t.attrs)
+            for j, a in ipairs(t.attrs) do
+                put('TATTR' .. i .. '.' .. j, a[1] .. '|' .. a[2] .. '|' .. a[3] .. '|' .. (a[4] or '') .. '|' .. (a[5] or '') .. '|' .. (a[6] or ''))
+            end
+        end
+    end
     attrs = attrs or {}
     put('ATTRN', #attrs)
     for i, a in ipairs(attrs) do
@@ -512,9 +585,9 @@ local function run()
     if net then
         netLast = {}
         netSendRaw(enc('HELLO=1'))
-        say('start (v19), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
+        say('start (v20), TRYB SIECIOWY: SendOSC przez linie OSC ' .. OSC_LINE .. ' (ustaw w niej IP laptopa z mostem, Send=Yes)')
     else
-        say('start (v19), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+        say('start (v20), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
     end
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
@@ -523,7 +596,7 @@ local function run()
     local cmd, lastCmd = nil, nil
     local pools, poolKeys, lastPoolSig = {}, {}, nil
     local lays, layKeys, lastLaySig = {}, {}, nil
-    local sel = nil
+    local sel, types = nil, nil
     while MA3WingToken == token do
         local page = pageNumber()
         local changed = (page ~= lastPage)
@@ -532,7 +605,7 @@ local function run()
             local l, sig = attrList()
             if sig ~= lastSig then attrs, lastSig, changed = l, sig, true end
             local s = selectionList()
-            if s ~= sel then sel, changed = s, true end
+            if s ~= sel then sel, changed = s, true; types = selectionTypes() end
         end
         if not net then mirrorTick(); escTick() end
         cmd = cmdLine()
@@ -567,9 +640,9 @@ local function run()
             local ok, err
             if net then
                 ok = true
-                netSend(stateLines(page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel))
+                netSend(stateLines(page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel, types))
             else
-                ok, err = writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel)
+                ok, err = writeState(file, page, vals, attrs, execs, cmd, pools, poolKeys, lays, layKeys, sel, types)
             end
             if ok then
                 last, lastPage = vals, page
