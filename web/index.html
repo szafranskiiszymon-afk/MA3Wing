@@ -258,7 +258,7 @@ function storeTargetExists(obj){
 const KEYCYCLE={Assign:['Assign','Label'],Fixture:['Fixture','Selection'],Channel:['Channel','Generic'],
   Group:['Group','World','Filter'],Preset:['Preset','Attribute','Gel'],On:['On','Call'],Edit:['Edit','EditSetting'],
   Delete:['Delete','Remove','Release'],Copy:['Copy','Paste','Insert'],If:['If','IfActive','IfProg'],
-  Move:['Move','Exchange'],Cue:['Cue','Part'],Goto:['Goto','Load'],Store:['Store'],Time:['Time']};
+  Move:['Move','Exchange'],Select:['Select','Collect'],Stomp:['Stomp','Capture'],Cue:['Cue','Part'],Goto:['Goto','Load'],Store:['Store'],Time:['Time']};
 function pad(kind,v){
   const c=S.cmd;
   if(kind==='d'){const t=(c&&!/[0-9. ]$/.test(c))?' '+v:v;typeText(t);S.cmd=c+t;}
@@ -448,10 +448,14 @@ const led=(p)=>el('span','display:block;width:9px;height:9px;border-radius:50%;b
 // 3: upper block
 const upB=rowEl(cs,8,'align-items:flex-start');
 const cA=colEl(upB,GP,'padding-top:0');
-[['Highlt','Highlight'],['Solo','Solo'],['Freeze','Freeze'],['Prvw','Preview'],['Blind','Blind']].forEach(a=>sized(dir(cA,a[0],a[1]),U+4,U));
+S.freeze=false;
+[['Highlt','Highlight'],['Solo','Solo'],['Freeze','Freeze'],['Prvw','Preview'],['Blind','Blind']].forEach(a=>{
+  if(a[0]!=='Freeze'){sized(dir(cA,a[0],a[1]),U+4,U);return;}
+  const fb=sized(key(cA,'Freeze','',()=>{S.freeze=!S.freeze;cmdSend('Freeze '+(S.freeze?'On':'Off'));
+    fb.style.background=S.freeze?'#ffc71a':'';fb.style.color=S.freeze?'#1a1400':'';}),U+4,U);});
 const cB=el('div','display:grid;grid-template-columns:repeat(2,'+(U+4)+'px);grid-auto-rows:'+U+'px;gap:'+GP+'px',upB);
 ['On','Off','Move','Copy','Delete','Align','Stomp','Help','Select','Goto'].forEach(l=>{
-  if(l==='Stomp'||l==='Help'||l==='Select'||l==='Goto'&&false)dir(cB,l,l);else kw(cB,l);
+  if(l==='Help')dir(cB,l,l);else kw(cB,l);
 });
 const xb=colEl(upB,6);
 const xl=rowEl(xb,0,'height:13px');
@@ -508,7 +512,9 @@ const fu=kw(cFull,'Full');fu.style.gridRow='5';sized(fu,U+4,U);
 const lwW=el('div','margin-left:auto;align-self:center;width:34px;height:120px;border-radius:10px;background:repeating-linear-gradient(#2e2e32 0 6px,#1f1f22 6px 9px);border:1px solid #000;touch-action:none',loB);
 let lst=null;
 lwW.addEventListener('pointerdown',e=>{e.preventDefault();try{lwW.setPointerCapture(e.pointerId)}catch(x){}lst={y:e.clientY,p:0};});
-lwW.addEventListener('pointermove',e=>{if(!lst)return;const off=(lst.y-e.clientY)/scale;lwW.style.backgroundPosition='0 '+(-off)+'px';const st=Math.round(off/8);if(st!==lst.p){osc('Level wheel '+(st>lst.p?'+':'-')+' (adres OSC do ustalenia)');lst.p=st;}});
+let lwAcc=0;
+setInterval(()=>{if(!lwAcc)return;const n=lwAcc;lwAcc=0;cmdSend('Attribute "Dimmer" At '+(n>0?'+ ':'- ')+Math.abs(n));},80);
+lwW.addEventListener('pointermove',e=>{if(!lst)return;const off=(lst.y-e.clientY)/scale;lwW.style.backgroundPosition='0 '+(-off)+'px';const st=Math.round(off/5);if(st!==lst.p){lwAcc+=st-lst.p;lst.p=st;}});
 const lend=()=>{lst=null};lwW.addEventListener('pointerup',lend);lwW.addEventListener('pointercancel',lend);
 // Xkeys X1..X16 docked in the free bottom-right corner of the command section
 const xDock=el('div','margin-top:auto;margin-bottom:auto;align-self:center;display:flex;flex-direction:column;gap:6px',cs);
