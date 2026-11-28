@@ -90,7 +90,7 @@ function feedback(line){
   scheduleRedraw();
 }
 function vib(){if(navigator.vibrate)try{navigator.vibrate(8)}catch(e){}}
-function showCmd(){cmdEl.innerHTML='<span style="color:#ffc71a">['+S.page+']&gt;</span> '+S.cmd.replace(/</g,'&lt;');}
+function showCmd(){if(!S.cmd.trim())S.storeOpt='';cmdEl.innerHTML='<span style="color:#ffc71a">['+S.page+']&gt;</span> '+S.cmd.replace(/</g,'&lt;')+(S.storeOpt?'<span style="color:#b4b3ff"> '+esc(S.storeOpt)+'</span>':'');}
 
 // momentary key (multi-touch safe)
 function key(parent,label,style,onDown,onUp,sub){
@@ -165,16 +165,65 @@ function completeWith(obj){
   if(/^(Assign|Copy|Move|Clone)$/i.test(c)){const t=' '+obj+' ';typeText(t);S.cmd=c+t;showCmd();osc('MA linia komend ← '+S.cmd+' (wybierz cel)');return;}
   // Assign/Copy/Move/Clone need "At" before the target: "Assign Group 5 At Exec 201"
   if(/^(Assign|Copy|Move|Clone)\b/i.test(c)&&/\d/.test(c)&&!/\b(At|Thru|\+|-)$/i.test(c))c+=' At';
-  typeKey('{ESC}');cmdSend(c+' '+obj);S.cmd='';showCmd();
+  if(/^Store$/i.test(c)&&!S.storeOpt){const ex=storeTargetExists(obj);
+    if(ex){typeKey('{ESC}');openStoreOpts({cmd:c,obj:obj,label:ex.label});return;}}
+  typeKey('{ESC}');cmdSend(c+' '+obj+(S.storeOpt&&/^Store\b/i.test(c)?' '+S.storeOpt:''));S.cmd='';S.storeOpt='';showCmd();
 }
 function typeText(t){if(wsOk){try{ws.send('!keys\tt\t'+t);}catch(e){}}}
 function typeKey(k){if(wsOk){try{ws.send('!keys\tk\t'+k);}catch(e){}}}
 // press/release of a real MA key via its keyboard shortcut (Store=S, Update=U): holding works like on the console
 function holdKey(dir,letter){if(wsOk){try{ws.send('!hold\t'+dir+'\t'+letter);}catch(e){}}}
 function holdBtn(parent,label,letter,bg,fg){
+  let held=false,timer=null,longp=false;
   return key(parent,label,'height:auto;min-height:0;background:'+bg+';color:'+fg,
-    ()=>{holdKey('d',letter);const c=S.cmd;S.cmd=c+(c&&!/ $/.test(c)?' ':'')+label+' ';showCmd();osc('MA klawisz '+label+' (przytrzymaj = opcje)');},
-    ()=>holdKey('u',letter));
+    ()=>{holdKey('d',letter);held=true;longp=false;const c=S.cmd;S.cmd=c+(c&&!/ $/.test(c)?' ':'')+label+' ';showCmd();
+      osc('MA klawisz '+label+(letter==='S'?' (przytrzymaj = opcje Store)':''));
+      if(letter==='S'){clearTimeout(timer);timer=setTimeout(()=>{if(held){holdKey('u',letter);held=false;longp=true;openStoreOpts();}},350);}},
+    ()=>{clearTimeout(timer);if(held){holdKey('u',letter);held=false;}});
+}
+// ===== Store options (like MA's Store window): Merge / Overwrite / Remove / Create Second Cue ...
+// Chosen option is appended at the end: "Store Preset 2.4 /Merge"
+S.storeOpt='';
+const SOPTS=[['/Merge','Merge','Dodaje nowe wartości do istniejących'],['/Overwrite','Overwrite','Zastępuje całą zawartość'],
+  ['/Remove','Remove','Usuwa wartości z programatora z obiektu'],['/CreateSecondCue','Create Second Cue','Tworzy drugi cue w sekwencji']];
+const SFLAGS=[['/CueOnly','Cue Only'],['/Selective','Selective'],['/Global','Global'],['/Universal','Universal']];
+let soFlags=[],soPending=null;
+const soWrap=el('div','position:absolute;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9',stage);
+soWrap.addEventListener('pointerdown',e=>{if(e.target===soWrap){e.preventDefault();closeStoreOpts(false);}});
+const soBox=el('div','width:640px;background:#1a1a1d;border:1px solid #3a3a3f;border-radius:14px;box-shadow:0 10px 40px #000;padding:14px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px',soWrap);
+const soTitle=el('div','font:600 16px -apple-system,sans-serif;display:flex;align-items:center;gap:8px',soBox,'');
+const soMain=el('div','display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px',soBox);
+el('div','font:600 11px -apple-system,sans-serif;color:#8e8e93;text-transform:uppercase;letter-spacing:.5px;margin-top:4px',soBox,'Dodatkowo');
+const soFl=el('div','display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px',soBox);
+const soFoot=el('div','display:flex;gap:8px;margin-top:4px',soBox);
+function soFlagStr(){return soFlags.join(' ');}
+function renderStoreOpts(){
+  soTitle.innerHTML=soPending?'<span>Obiekt <b style="color:#ffc71a">'+esc(soPending.label)+'</b> już istnieje – co zrobić?</span>':'<span>Opcje <b style="color:#ffc71a">Store</b></span>';
+  soMain.innerHTML='';
+  SOPTS.forEach(o=>{if(soPending&&o[0]==='/CreateSecondCue'&&!/^(Cue|Exec|Sequence)/i.test(soPending.obj))return;
+    const on=!soPending&&S.storeOpt===o[0];
+    key(soMain,o[1]+'<br><span class="sub" style="white-space:normal">'+o[2]+'</span>','height:64px;white-space:normal;font-size:15px;background:'+(on?'#ffc71a':'#a32a26')+';color:'+(on?'#1a1400':'#fff'),()=>chooseStoreOpt(o[0]));});
+  soFl.innerHTML='';
+  SFLAGS.forEach(f=>{const on=soFlags.indexOf(f[0])>=0;
+    key(soFl,f[1],'height:40px'+(on?';background:#5e5ce6;color:#fff':''),()=>{const i=soFlags.indexOf(f[0]);if(i>=0)soFlags.splice(i,1);else soFlags.push(f[0]);renderStoreOpts();});});
+  soFoot.innerHTML='';
+  if(!soPending)key(soFoot,'Bez opcji','height:44px;flex:1',()=>chooseStoreOpt(''));
+  key(soFoot,'Anuluj','height:44px;flex:1;background:'+A+';color:'+AT,()=>closeStoreOpts(false));
+}
+function openStoreOpts(pending){soPending=pending||null;renderStoreOpts();soWrap.style.display='flex';}
+function closeStoreOpts(keep){soWrap.style.display='none';
+  if(!keep&&soPending){S.cmd='';S.storeOpt='';showCmd();osc('Store anulowany');}
+  soPending=null;}
+function chooseStoreOpt(o){
+  if(soPending){const p=soPending;soPending=null;soWrap.style.display='none';
+    cmdSend([p.cmd,p.obj,o,soFlagStr()].filter(Boolean).join(' '));S.cmd='';S.storeOpt='';soFlags=[];showCmd();return;}
+  S.storeOpt=[o,soFlagStr()].filter(Boolean).join(' ');soWrap.style.display='none';showCmd();
+  osc('Store '+(S.storeOpt||'bez opcji')+' – wybierz cel (executor, preset, grupę…)');
+}
+function storeTargetExists(obj){
+  let m=/^Preset (\d+)\.(\d+)$/.exec(obj);if(m){const P=POOLS['PRE'+m[1]+'.'];return P&&P.items[+m[2]]?{label:'Preset '+m[1]+'.'+m[2]+' "'+P.items[+m[2]].name+'"'}:null;}
+  m=/^Group (\d+)$/.exec(obj);if(m){const it=POOLS.GRP.items[+m[1]];return it?{label:'Group '+m[1]+' "'+it.name+'"'}:null;}
+  return null;
 }
 function pad(kind,v){
   const c=S.cmd;
@@ -182,7 +231,7 @@ function pad(kind,v){
   else if(kind==='dot'){typeText('.');S.cmd=c+'.';}
   else if(kind==='kw'){const t=(c&&!/ $/.test(c)?' ':'')+v+' ';typeText(t);S.cmd=c+t;}
   else if(kind==='dir')cmdSend(v);
-  else if(kind==='please'){if(c.trim()){typeKey('{ESC}');cmdSend(c.trim());}else typeKey('{ENTER}');S.cmd='';}
+  else if(kind==='please'){if(c.trim()){typeKey('{ESC}');cmdSend(c.trim()+(S.storeOpt&&/^Store\b/i.test(c.trim())?' '+S.storeOpt:''));}else typeKey('{ENTER}');S.cmd='';S.storeOpt='';}
   else if(kind==='clear'){if(c){typeKey('{ESC}');S.cmd='';}else cmdSend('Clear');}
   else if(kind==='oops'){if(c){const m=/(\S+\s*)$/.exec(c);const n=m?m[1].length:1;typeKey('{BS '+n+'}');S.cmd=c.slice(0,c.length-n);}else cmdSend('Oops');}
   else if(kind==='bs'){typeKey('{BS}');S.cmd=c.slice(0,-1);}
