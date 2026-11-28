@@ -59,7 +59,7 @@ html,body{margin:0;background:#000;overflow:hidden;touch-action:none;-webkit-use
 <div id="stage"></div>
 <script>
 (function(){
-const S={page:1,f:{},kn:{},enc:[0,0,0,0,0],gm:100,m:100,cmd:''};
+const S={page:1,f:{},kn:{},enc:[0,0,0,0,0],gm:100,m:100,xf:0,cmd:''};
 const stage=document.getElementById('stage');
 function el(tag,style,parent,html){const e=document.createElement(tag);if(style)e.style.cssText=style;if(html!=null)e.innerHTML=html;if(parent)parent.appendChild(e);return e;}
 const clamp=v=>Math.round(Math.max(0,Math.min(100,v)));
@@ -319,14 +319,15 @@ const mg=el('div','display:grid;grid-template-columns:repeat(2,minmax(0,1fr));ga
   else key(mg,a[0],'height:36px',()=>cmdSend(a[1]));});
 el('div','height:18px',ms);
 const mf=el('div','flex:1;display:flex;gap:8px;min-height:0',ms);
-function masterFader(name,getK,cmd,capColor){
-  const w=el('div','flex:1;display:flex;flex-direction:column;gap:4px',mf);let lab;
+function masterFader(name,getK,cmd,capColor,parent){
+  const w=el('div','flex:1;display:flex;flex-direction:column;gap:4px;min-height:0',parent||mf);let lab;
   const t=fader(w,'flex:1',34,capColor,()=>S[getK],v=>{S[getK]=v;lab.textContent=name+' '+v;cmdSend(cmd+' At '+v);});
   lab=el('div','text-align:center;font:500 11px -apple-system,sans-serif;color:#a1a1a6',w,name+' '+S[getK]);
   redrawAll.push(t.draw);
 }
 masterFader('Master','m','Master 1.1','#2e2e32');
-masterFader('GM','gm','Master 2.1','#6e6e73');
+// X-Fade of the selected sequence (FaderCrossFade); GM sits under the Menu key
+masterFader('XFade','xf','FaderCrossFade','#3a4a6a');
 el('div','height:16px',ms);
 const mb=el('div','display:flex;flex-direction:column;gap:4px;padding:0 18px',ms);
 key(mb,'Pause','height:40px;background:'+A+';color:'+AT,()=>cmdSend('Pause'));
@@ -456,6 +457,9 @@ sized(key(cX,'List','',()=>cmdSend('List')),U+4,U,11);
 const cM=colEl(upB,6,'margin-left:4px');
 const lw=el('div','height:13px',cM);led(lw);
 sized(key(cM,'Menu','',()=>cmdSend('Menu "MenuSelector"')),U+4,U,11);
+cM.style.alignSelf='stretch';
+const gmBox=el('div','flex:1;min-height:120px;display:flex;margin-top:6px',cM);
+masterFader('GM','gm','Master 2.1','#6e6e73',gmBox);
 
 // lower block
 const loB=rowEl(cs,12,'align-items:flex-start;margin-top:6px');
