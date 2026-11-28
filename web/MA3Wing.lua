@@ -316,61 +316,72 @@ local function cmdlineFile()
     local dir = (os and os.getenv) and (os.getenv('TEMP') or os.getenv('TMP')) or nil
     return (dir or 'C:\\Windows\\Temp') .. '\\MA3Wing-cmdline.txt'
 end
-local mirrorMethod, mirrorFailed, mirrorDumped, mirrorAnnounced = nil, false, false, false
-local function readBack(co, p)
-    local ok, v = pcall(function() return co[p] end)
-    if ok then return v end
+local mirrorMethod, mirrorFailed, mirrorAnnounced = nil, false, false
+local clearKey = nil
+-- aktualny tekst w linii komend MA
+local function cmdText()
+    local ok, co = pcall(CmdObj)
+    if not ok or co == nil then return nil end
+    for _, p in ipairs({'CmdText', 'cmdtext'}) do
+        local okv, v = pcall(function() return co[p] end)
+        if okv and type(v) == 'string' then return v end
+    end
     return nil
 end
-local function norm(v) return (tostring(v or ''):gsub('^%s+', ''):gsub('%s+$', '')) end
-local function setByProperty(text)
-    local ok, co = pcall(CmdObj)
-    if not ok or co == nil then return false end
-    if mirrorMethod then                       -- sposob juz znany: po prostu wpisz
-        local p = mirrorMethod:sub(6)
-        local okw = pcall(function() co[p] = text end)
-        if not okw then okw = pcall(function() co:Set(p, text) end) end
-        return okw
-    end
-    for _, p in ipairs({'cmdtext', 'text', 'input', 'cmdline', 'commandline', 'edittext', 'cmd'}) do
-        local probe = (text ~= '' and text) or 'MA3Wing'
-        pcall(function() co[p] = probe end)
-        if norm(readBack(co, p)) == norm(probe) then
-            mirrorMethod = 'prop:' .. p
-            if probe ~= text then pcall(function() co[p] = text end) end
-            return true
+-- wpisanie znakow wewnatrz MA (Keyboard), na chwile bez skrotow klawiszowych
+local function typeChars(s)
+    if s == '' then return end
+    local sc, prev = nil, nil
+    pcall(function() sc = CurrentProfile().KeyboardShortCuts; prev = sc.KeyboardShortcutsActive end)
+    pcall(function() FindBestFocus(GetDisplayByIndex(1).CmdLineSection) end)
+    if sc then pcall(function() sc.KeyboardShortcutsActive = false end) end
+    for i = 1, #s do pcall(Keyboard, 1, 'char', s:sub(i, i)) end
+    if sc and prev ~= nil then pcall(function() sc.KeyboardShortcutsActive = prev end) end
+end
+local function pressKey(k)
+    pcall(Keyboard, 1, 'press', k); pcall(Keyboard, 1, 'release', k)
+end
+-- czyszczenie linii komend: Esc (nazwe klawisza trzeba odgadnac), w razie potrzeby Backspace
+local function clearLine()
+    local cur = cmdText()
+    if cur == nil or cur == '' then return true end
+    pcall(function() FindBestFocus(GetDisplayByIndex(1).CmdLineSection) end)
+    local tries = clearKey and {clearKey} or {'Escape', 'Esc', 'ESCAPE', 'escape', 'Backspace', 'BackSpace', 'Back'}
+    for _, k in ipairs(tries) do
+        if k:lower():find('back') then
+            for _ = 1, #cur do pressKey(k) end
+        else
+            pressKey(k)
         end
-        pcall(function() co:Set(p, probe) end)
-        if norm(readBack(co, p)) == norm(probe) then
-            mirrorMethod = 'prop:' .. p
-            if probe ~= text then pcall(function() co:Set(p, text) end) end
-            return true
-        end
+        coroutine.yield(0.05)
+        local now = cmdText()
+        if now == '' then clearKey = k; return true end
     end
     return false
 end
-local function dumpCmdObj()
-    if mirrorDumped then return end
-    mirrorDumped = true
-    local ok, co = pcall(CmdObj)
-    if not ok or co == nil then say('CmdObj niedostepny'); return end
-    local parts = {}
-    local okc, cnt = pcall(function() return co:PropertyCount() end)
-    if okc and type(cnt) == 'number' then
-        for i = 0, cnt - 1 do
-            local okn, n = pcall(function() return co:PropertyName(i) end)
-            if okn and n then parts[#parts + 1] = tostring(n) .. '=' .. tostring(readBack(co, n)) end
-        end
-    end
-    say('nie umiem wpisac do linii komend - wlasciwosci CmdObj (przeslij zrzut): ' .. table.concat(parts, '  '))
-end
 local function setCmdLine(text)
     if mirrorFailed then return end
-    if setByProperty(text) then return end
-    if mirrorMethod then return end            -- pojedyncza nieudana proba: pomijamy, bez wylaczania
-    dumpCmdObj()
-    mirrorFailed = true
-    say('podglad linii komend z iPada wylaczony (komendy z iPada dzialaja normalnie)')
+    if type(Keyboard) ~= 'function' then mirrorFailed = true; say('brak funkcji Keyboard - podglad linii komend wylaczony'); return end
+    local cur = cmdText()
+    if cur == nil then mirrorFailed = true; say('nie moge odczytac CmdObj().CmdText - podglad linii komend wylaczony'); return end
+    if cur == text then return end
+    if text:sub(1, #cur) == cur then
+        typeChars(text:sub(#cur + 1))
+    else
+        if not clearLine() then
+            say('nie umiem wyczyscic linii komend (sprobowano Escape/Backspace) - przeslij zrzut')
+            mirrorFailed = true
+            return
+        end
+        typeChars(text)
+    end
+    coroutine.yield(0.05)
+    local now = cmdText()
+    if not mirrorAnnounced and text ~= '' then
+        mirrorAnnounced = true
+        if now == text then say('podglad linii komend z iPada: OK' .. (clearKey and (' (czyszczenie: ' .. clearKey .. ')') or ''))
+        else say('podglad linii komend: wpisalem "' .. text .. '", MA pokazuje "' .. tostring(now) .. '"') end
+    end
 end
 local lastMirror = nil
 local function mirrorTick()
@@ -383,7 +394,6 @@ local function mirrorTick()
         lastMirror = t
         local ok, err = pcall(setCmdLine, t)
         if not ok then say('linia komend: ' .. tostring(err)); mirrorFailed = true end
-        if mirrorMethod and not mirrorAnnounced then mirrorAnnounced = true; say('podglad linii komend z iPada: OK (' .. mirrorMethod .. ')') end
     end
 end
 
@@ -431,7 +441,7 @@ local function run()
     local okw, errw = writeState(file, pageNumber(), {})
     if not okw then say('BLAD: nie moge zapisac ' .. file .. ' (' .. tostring(errw) .. ')'); return end
 
-    say('start (v15), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
+    say('start (v16), plik: ' .. file .. ', fader 201 = ' .. tostring(faderValue(201)))
 
     local last, lastPage, lastSig, attrs = {}, nil, nil, {}
     local tick = 0
