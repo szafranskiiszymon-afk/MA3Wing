@@ -485,6 +485,12 @@ let lst=null;
 lwW.addEventListener('pointerdown',e=>{e.preventDefault();try{lwW.setPointerCapture(e.pointerId)}catch(x){}lst={y:e.clientY,p:0};});
 lwW.addEventListener('pointermove',e=>{if(!lst)return;const off=(lst.y-e.clientY)/scale;lwW.style.backgroundPosition='0 '+(-off)+'px';const st=Math.round(off/8);if(st!==lst.p){osc('Level wheel '+(st>lst.p?'+':'-')+' (adres OSC do ustalenia)');lst.p=st;}});
 const lend=()=>{lst=null};lwW.addEventListener('pointerup',lend);lwW.addEventListener('pointercancel',lend);
+// Xkeys X1..X16 docked in the free bottom-right corner of the command section
+const xDock=el('div','margin-top:auto;margin-bottom:auto;align-self:center;display:flex;flex-direction:column;gap:6px',cs);
+xDock.appendChild(xl);xDock.appendChild(xr1);xDock.appendChild(xr2);
+const XK=46;   // bigger Xkeys in the dock
+xl.querySelectorAll('div').forEach(d=>{if(d.style.width===U+'px')d.style.width=XK+'px';});
+[xr1,xr2].forEach(r=>r.querySelectorAll('.k').forEach(k=>{k.style.width=XK+'px';k.style.height=XK+'px';k.style.fontSize='12px';}));
 
 // ===== Groups / Presets pools (plugin v7: GRPn, GRPLIST, PREt.n, PREt.LIST) =====
 const POOLS={GRP:{items:{},list:null}};
